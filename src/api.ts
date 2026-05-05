@@ -671,59 +671,106 @@ export const api = {
     if (!auth.currentUser) throw new Error("Not authenticated");
     try {
       const uid = auth.currentUser.uid;
+      const batch = writeBatch(db);
       
-      // Fetch existing data to prevent duplicates
-      const [existingMaterials, existingProducts, existingVendors] = await Promise.all([
+      // Fetch existing data for mapping and deduplication
+      const [existingMaterialsSnap, existingProductsSnap, existingVendorsSnap] = await Promise.all([
         getDocs(query(collection(db, COLLECTIONS.MATERIALS), where("userId", "==", uid))),
         getDocs(query(collection(db, COLLECTIONS.PRODUCTS), where("userId", "==", uid))),
         getDocs(query(collection(db, COLLECTIONS.VENDORS), where("userId", "==", uid)))
       ]);
 
-      const materialNames = new Set(existingMaterials.docs.map(d => d.data().name?.toLowerCase()?.trim()));
-      const productNames = new Set(existingProducts.docs.map(d => d.data().name?.toLowerCase()?.trim()));
-      const vendorNames = new Set(existingVendors.docs.map(d => d.data().name?.toLowerCase()?.trim()));
+      // Maps to store Name -> ID for existing items
+      const existingMaterialsByName = new Map(existingMaterialsSnap.docs.map(d => [d.data().name?.toLowerCase()?.trim(), d.id]));
+      const existingProductsByName = new Map(existingProductsSnap.docs.map(d => [d.data().name?.toLowerCase()?.trim(), d.id]));
+      const existingVendorsByName = new Map(existingVendorsSnap.docs.map(d => [d.data().name?.toLowerCase()?.trim(), d.id]));
 
-      const batch = writeBatch(db);
-      
-      if (data.materials) {
-        data.materials.forEach((m: any) => {
-          const name = m.name?.toLowerCase()?.trim();
-          if (name && !materialNames.has(name)) {
-            const ref = doc(collection(db, COLLECTIONS.MATERIALS));
-            batch.set(ref, { ...sanitizeData(m), userId: uid, createdAt: serverTimestamp() });
-            materialNames.add(name);
-          }
-        });
-      }
-      if (data.products) {
-        data.products.forEach((p: any) => {
-          const name = p.name?.toLowerCase()?.trim();
-          if (name && !productNames.has(name)) {
-            const ref = doc(collection(db, COLLECTIONS.PRODUCTS));
-            batch.set(ref, { ...sanitizeData(p), userId: uid, createdAt: serverTimestamp() });
-            productNames.add(name);
-          }
-        });
-      }
-      if (data.sales) {
-        data.sales.forEach((s: any) => {
-          // Sales don't have a natural "unique name", so we import them all
-          const ref = doc(collection(db, COLLECTIONS.SALES));
-          batch.set(ref, { ...sanitizeData(s), userId: uid, createdAt: serverTimestamp() });
-        });
-      }
+      // Map to store Backup ID -> New/Existing Database ID
+      const idMap = new Map<string, string>();
+
+      // 1. Process Vendors
       if (data.vendors) {
         data.vendors.forEach((v: any) => {
-          const name = v.name?.toLowerCase()?.trim();
-          if (name && !vendorNames.has(name)) {
-            const ref = doc(collection(db, COLLECTIONS.VENDORS));
-            batch.set(ref, { ...sanitizeData(v), userId: uid, createdAt: serverTimestamp() });
-            vendorNames.add(name);
+          const nameTrimmed = v.name?.toLowerCase()?.trim();
+          const existingId = existingVendorsByName.get(nameTrimmed);
+          
+          if (existingId) {
+            idMap.set(v.id, existingId);
+          } else {
+            const newRef = doc(collection(db, COLLECTIONS.VENDORS));
+            batch.set(newRef, { ...sanitizeData(v), userId: uid, createdAt: serverTimestamp() });
+            idMap.set(v.id, newRef.id);
+            existingVendorsByName.set(nameTrimmed, newRef.id);
           }
         });
       }
+
+      // 2. Process Materials
+      if (data.materials) {
+        data.materials.forEach((m: any) => {
+          const nameTrimmed = m.name?.toLowerCase()?.trim();
+          const existingId = existingMaterialsByName.get(nameTrimmed);
+
+          if (existingId) {
+            idMap.set(m.id, existingId);
+          } else {
+            const newRef = doc(collection(db, COLLECTIONS.MATERIALS));
+            batch.set(newRef, { ...sanitizeData(m), userId: uid, createdAt: serverTimestamp() });
+            idMap.set(m.id, newRef.id);
+            existingMaterialsByName.set(nameTrimmed, newRef.id);
+          }
+        });
+      }
+
+      // 3. Process Products
+      if (data.products) {
+        data.products.forEach((p: any) => {
+          const nameTrimmed = p.name?.toLowerCase()?.trim();
+          const existingId = existingProductsByName.get(nameTrimmed);
+
+          const mappedMaterials = p.materials?.map((matRef: any) => ({
+            ...matRef,
+            materialId: idMap.get(matRef.materialId) || matRef.materialId
+          })) || [];
+
+          if (existingId) {
+            idMap.set(p.id, existingId);
+            // Optionally update existing product materials if needed, 
+            // but the user said "ensure duplicate product are not imported"
+          } else {
+            const newRef = doc(collection(db, COLLECTIONS.PRODUCTS));
+            batch.set(newRef, { 
+              ...sanitizeData(p), 
+              userId: uid, 
+              materials: mappedMaterials,
+              createdAt: serverTimestamp() 
+            });
+            idMap.set(p.id, newRef.id);
+            existingProductsByName.set(nameTrimmed, newRef.id);
+          }
+        });
+      }
+
+      // 4. Process Sales
+      if (data.sales) {
+        data.sales.forEach((s: any) => {
+          const newRef = doc(collection(db, COLLECTIONS.SALES));
+          const mappedSale = {
+            ...sanitizeData(s),
+            userId: uid,
+            productId: idMap.get(s.productId) || s.productId,
+            createdAt: serverTimestamp()
+          };
+          batch.set(newRef, mappedSale);
+        });
+      }
+
+      // 5. Profile
       if (data.profile) {
-        batch.set(doc(db, COLLECTIONS.USERS, uid), { ...sanitizeData(data.profile), updatedAt: serverTimestamp() }, { merge: true });
+        batch.set(doc(db, COLLECTIONS.USERS, uid), { 
+          ...sanitizeData(data.profile), 
+          updatedAt: serverTimestamp() 
+        }, { merge: true });
       }
 
       await batch.commit();
