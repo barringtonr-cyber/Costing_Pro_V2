@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "barringtonr@gmail.com"
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity Validations
+    function isValidMaterial(data) {
+      return data.keys().hasAll(['name', 'userId']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.userId == request.auth.uid;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'userId']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.userId == request.auth.uid;
+    }
+
+    function isValidSale(data) {
+      return data.keys().hasAll(['productId', 'userId']) &&
+             data.userId == request.auth.uid;
+    }
+
+    function isValidVendor(data) {
+      return data.keys().hasAll(['name', 'userId']) &&
+             data.name is string && data.userId == request.auth.uid;
+    }
+
+    function isValidStockLog(data) {
+      return data.keys().hasAll(['materialId', 'userId']) &&
+             data.userId == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email']) &&
+             data.email is string &&
+             (request.resource.data.role == "user" || isAdmin());
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                    isValidUser(request.resource.data) &&
+                    (isAdmin() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false; // Only manageable via console or specialized tool
+    }
+
+    match /materials/{materialId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidMaterial(request.resource.data);
+      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidMaterial(request.resource.data);
+      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidProduct(request.resource.data);
+      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidProduct(request.resource.data);
+      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidSale(request.resource.data);
+      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidSale(request.resource.data);
+      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidVendor(request.resource.data);
+      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidVendor(request.resource.data);
+      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+    }
+
+    match /stock_logs/{logId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidStockLog(request.resource.data);
+      allow update, delete: if false; // Logs should be immutable
+    }
+  }
+}

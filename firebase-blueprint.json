@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "Material": {
+      "title": "Material",
+      "description": "Raw material used in products",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "unit": { "type": "string" },
+        "costPerUnit": { "type": "number" },
+        "quantityInStock": { "type": "number" },
+        "minStockLevel": { "type": "number" },
+        "vendor": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "userId"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Finished product composed of materials",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sellingPrice": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "profit": { "type": "number" },
+        "margin": { "type": "number" },
+        "materials": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Record of a product sale",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantitySold": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "profit": { "type": "number" },
+        "customerName": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Suppliers of materials",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contactName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "StockLog": {
+      "title": "Stock Log",
+      "description": "History of stock changes",
+      "type": "object",
+      "properties": {
+        "materialId": { "type": "string" },
+        "change": { "type": "number" },
+        "type": { "type": "string" },
+        "note": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "App settings and user info",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "companyName": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "role": { "type": "string" },
+        "onboardingComplete": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/materials/{materialId}": { "schema": "Material", "description": "Materials collection" },
+    "/products/{productId}": { "schema": "Product", "description": "Products collection" },
+    "/sales/{saleId}": { "schema": "Sale", "description": "Sales collection" },
+    "/vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors collection" },
+    "/stock_logs/{logId}": { "schema": "StockLog", "description": "Stock logs collection" },
+    "/users/{userId}": { "schema": "UserProfile", "description": "Users collection" }
+  }
+}
