@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Save, Building2, Image as ImageIcon, CheckCircle2, Download, Upload, Database, Trash2 } from "lucide-react";
+import { Save, Building2, Image as ImageIcon, CheckCircle2, Download, Upload, Database, Trash2, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +14,7 @@ export default function Settings() {
   const [logoUrl, setLogoUrl] = useState("");
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -49,6 +50,23 @@ export default function Settings() {
     } finally {
       setSaving(false);
       setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
+  const handleCleanup = async () => {
+    setIsCleaning(true);
+    try {
+      const result = await api.cleanupDuplicates() as any;
+      setNotification({ 
+        type: 'success', 
+        message: `Cleanup completed! Deleted ${result.deletedMaterials} materials, ${result.deletedVendors} vendors, and ${result.deletedProducts} products.` 
+      });
+    } catch (err) {
+      console.error("Cleanup error:", err);
+      setNotification({ type: 'error', message: 'Failed to cleanup duplicates.' });
+    } finally {
+      setIsCleaning(false);
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
@@ -294,6 +312,22 @@ export default function Settings() {
                     <input type="file" accept=".json" onChange={handleRestore} className="hidden" disabled={isRestoring} />
                   </label>
                 </div>
+              </div>
+
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+                <p className="text-sm font-bold text-amber-900 mb-1">Database Maintenance</p>
+                <p className="text-xs text-amber-600 mb-4 leading-relaxed">
+                  Remove duplicate materials, vendors, and products by name.
+                </p>
+                
+                <button
+                  onClick={handleCleanup}
+                  disabled={isCleaning}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-amber-200 text-amber-600 rounded-lg hover:bg-amber-50 transition-colors text-sm font-medium w-full"
+                >
+                  {isCleaning ? <div className="w-4 h-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Cleanup Duplicates
+                </button>
               </div>
 
               <div className="p-4 bg-red-50 rounded-xl border border-red-100">

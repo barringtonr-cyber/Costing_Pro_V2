@@ -454,30 +454,64 @@ export const api = {
     }
   },
 
-  cleanupDuplicateMaterials: async () => {
+  cleanupDuplicates: async () => {
     if (!auth.currentUser) throw new Error("Not authenticated");
     try {
-      const q = query(collection(db, COLLECTIONS.MATERIALS), where("userId", "==", auth.currentUser.uid));
-      const snap = await getDocs(q);
-      const seen = new Map<string, string>();
-      const toDelete: string[] = [];
-      
-      snap.docs.forEach(d => {
+      const batch = writeBatch(db);
+      let deletedMaterials = 0;
+      let deletedVendors = 0;
+      let deletedProducts = 0;
+
+      // 1. Cleanup Materials
+      const materialsQ = query(collection(db, COLLECTIONS.MATERIALS), where("userId", "==", auth.currentUser.uid));
+      const materialsSnap = await getDocs(materialsQ);
+      const seenMaterials = new Set<string>();
+      materialsSnap.docs.forEach(d => {
         const name = d.data().name?.toLowerCase()?.trim();
-        if (seen.has(name)) {
-          toDelete.push(d.id);
-        } else {
-          seen.set(name, d.id);
+        if (name && seenMaterials.has(name)) {
+          batch.delete(d.ref);
+          deletedMaterials++;
+        } else if (name) {
+          seenMaterials.add(name);
         }
       });
 
-      const batch = writeBatch(db);
-      toDelete.forEach(id => {
-        batch.delete(doc(db, COLLECTIONS.MATERIALS, id));
+      // 2. Cleanup Vendors
+      const vendorsQ = query(collection(db, COLLECTIONS.VENDORS), where("userId", "==", auth.currentUser.uid));
+      const vendorsSnap = await getDocs(vendorsQ);
+      const seenVendors = new Set<string>();
+      vendorsSnap.docs.forEach(d => {
+        const name = d.data().name?.toLowerCase()?.trim();
+        if (name && seenVendors.has(name)) {
+          batch.delete(d.ref);
+          deletedVendors++;
+        } else if (name) {
+          seenVendors.add(name);
+        }
       });
+
+      // 3. Cleanup Products
+      const productsQ = query(collection(db, COLLECTIONS.PRODUCTS), where("userId", "==", auth.currentUser.uid));
+      const productsSnap = await getDocs(productsQ);
+      const seenProducts = new Set<string>();
+      productsSnap.docs.forEach(d => {
+        const name = d.data().name?.toLowerCase()?.trim();
+        if (name && seenProducts.has(name)) {
+          batch.delete(d.ref);
+          deletedProducts++;
+        } else if (name) {
+          seenProducts.add(name);
+        }
+      });
+
       await batch.commit();
 
-      return { deletedCount: toDelete.length, updatedProductsCount: 0 };
+      return { 
+        deletedMaterials, 
+        deletedVendors, 
+        deletedProducts,
+        totalDeleted: deletedMaterials + deletedVendors + deletedProducts
+      };
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "cleanup-duplicates");
     }

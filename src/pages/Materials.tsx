@@ -357,12 +357,13 @@ export default function Materials() {
   };
 
   const handleCleanup = async () => {
-    console.log("Starting cleanup process...");
     setIsCleaning(true);
     try {
-      const result = await api.cleanupDuplicateMaterials();
-      console.log("Cleanup result:", result);
-      setCleanupResult(result);
+      const result = await api.cleanupDuplicates() as any;
+      setCleanupResult({ 
+        deletedCount: result.totalDeleted, 
+        updatedProductsCount: result.deletedProducts // Reusing field for simplicity in this specific UI
+      });
       fetchMaterials();
     } catch (error) {
       console.error("Cleanup error:", error);

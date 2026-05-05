@@ -43,6 +43,10 @@ export default function Vendors() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { showAllData } = useAdmin();
 
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{ deletedCount: number } | null>(null);
+
   const fetchVendors = async () => {
     try {
       const effectiveAll = showAllData && isAdmin;
@@ -52,6 +56,20 @@ export default function Vendors() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCleanup = async () => {
+    setIsCleaning(true);
+    try {
+      const result = await api.cleanupDuplicates() as any;
+      setCleanupResult({ deletedCount: result.deletedVendors });
+      fetchVendors();
+    } catch (error) {
+      console.error("Cleanup error:", error);
+      alert("Failed to cleanup duplicates.");
+    } finally {
+      setIsCleaning(false);
     }
   };
 
@@ -150,6 +168,13 @@ export default function Vendors() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
+            onClick={() => setShowCleanupModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 text-amber-600 rounded-lg hover:bg-amber-50 transition-colors text-sm font-medium"
+          >
+            <Store className="w-4 h-4" />
+            Cleanup Duplicates
+          </button>
+          <button
             onClick={exportPDF}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 text-zinc-600 rounded-lg hover:bg-zinc-50 transition-colors text-sm font-medium"
           >
@@ -165,6 +190,74 @@ export default function Vendors() {
           </button>
         </div>
       </div>
+
+      {/* Cleanup Confirmation Modal */}
+      {showCleanupModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-6">
+            {!cleanupResult ? (
+              <>
+                <div className="space-y-2 text-center">
+                  <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+                    <Store className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-zinc-900">Cleanup Vendors?</h3>
+                  <p className="text-sm text-zinc-500">
+                    This will find and remove redundant vendor entries with the exact same name.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    disabled={isCleaning}
+                    onClick={() => setShowCleanupModal(false)}
+                    className="flex-1 px-4 py-2 border border-zinc-200 rounded-xl text-zinc-600 font-medium hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={isCleaning}
+                    onClick={handleCleanup}
+                    className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isCleaning ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Cleaning...
+                      </>
+                    ) : (
+                      "Start Cleanup"
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2 text-center">
+                  <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto">
+                    <Save className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-zinc-900">Cleanup Complete!</h3>
+                  <div className="bg-zinc-50 rounded-xl p-4 space-y-2 text-left">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">Redundant vendors removed:</span>
+                      <span className="font-bold text-zinc-900">{cleanupResult.deletedCount}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCleanupModal(false);
+                    setCleanupResult(null);
+                  }}
+                  className="w-full px-4 py-2 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800"
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search and Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
