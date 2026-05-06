@@ -74,18 +74,29 @@ const COLLECTIONS = {
   USERS: 'users'
 };
 
-const sanitizeData = (data: any) => {
-  const sanitized = { ...data };
-  // Remove fields that shouldn't be overridden or are managed by server
-  delete sanitized.id;
-  delete sanitized.createdAt;
-  delete sanitized.updatedAt;
+const sanitizeData = (data: any): any => {
+  if (data === null || data === undefined) return null;
+  if (typeof data !== 'object') return data;
+  if (data instanceof Date) return data;
+  if ('_methodName' in data) return data; // Keep serverTimestamp markers or other Firebase literals if any
   
-  // Replace undefined with null or remove them
-  Object.keys(sanitized).forEach(key => {
-    if (sanitized[key] === undefined) delete sanitized[key];
+  if (Array.isArray(data)) {
+    return data.map(v => sanitizeData(v)).filter(v => v !== undefined);
+  }
+
+  const sanitized: any = {};
+  Object.keys(data).forEach(key => {
+    // Managed fields handled by API wrapper
+    if (['id', 'createdAt', 'updatedAt'].includes(key)) return;
+    
+    const value = data[key];
+    if (value !== undefined) {
+      const sanitizedValue = sanitizeData(value);
+      if (sanitizedValue !== undefined) {
+        sanitized[key] = sanitizedValue;
+      }
+    }
   });
-  
   return sanitized;
 };
 

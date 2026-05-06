@@ -29,7 +29,7 @@ export default function ProductListingGenerator({ product, onClose }: ProductLis
   const [error, setError] = useState<string | null>(null);
   const [generatedListing, setGeneratedListing] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [platform, setPlatform] = useState<"Etsy" | "Shopify" | "Instagram">("Etsy");
+  const [platform, setPlatform] = useState<"Etsy" | "Shopify" | "Instagram" | "Facebook">("Etsy");
 
   const generateListing = async () => {
     setGenerating(true);
@@ -163,7 +163,7 @@ ${generatedListing.tags.join(", ")}
 
         <div className="p-8 overflow-y-auto flex-1">
           <div className="flex gap-2 mb-8 p-1 bg-zinc-100 rounded-2xl w-fit mx-auto">
-            {(["Etsy", "Shopify", "Instagram"] as const).map((p) => (
+            {(["Etsy", "Shopify", "Instagram", "Facebook"] as const).map((p) => (
               <button
                 key={p}
                 onClick={() => setPlatform(p)}

@@ -15,69 +15,47 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.email == "barringtonr@gmail.com";
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == "barringtonr@gmail.com" ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isSuperAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Entity Validations
-    function isValidMaterial(data) {
-      return data.keys().hasAll(['name', 'userId']) &&
-             data.name is string && data.name.size() <= 200 &&
-             data.userId == request.auth.uid &&
-             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt) &&
-             data.get('updatedAt', request.time) == request.time;
+    // Entity Validations (Type & Bounds only)
+    function validateMaterial(m) {
+      return m.get('name', 'x') is string && m.get('name', 'x').size() <= 200;
     }
 
-    function isValidProduct(data) {
-      return data.keys().hasAll(['name', 'userId']) &&
-             data.name is string && data.name.size() <= 200 &&
-             data.userId == request.auth.uid &&
-             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt) &&
-             data.get('updatedAt', request.time) == request.time;
+    function validateProduct(p) {
+      return p.get('name', 'x') is string && p.get('name', 'x').size() <= 200;
     }
 
-    function isValidSale(data) {
-      return data.keys().hasAll(['productId', 'userId']) &&
-             data.userId == request.auth.uid &&
-             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt);
+    function validateSale(s) {
+      return s.get('productId', 'x') is string;
     }
 
-    function isValidVendor(data) {
-      return data.keys().hasAll(['name', 'userId']) &&
-             data.name is string && data.userId == request.auth.uid;
+    function validateVendor(v) {
+      return v.get('name', 'x') is string && v.get('name', 'x').size() <= 200;
     }
 
-    function isValidStockLog(data) {
-      return data.keys().hasAll(['materialId', 'userId']) &&
-             data.userId == request.auth.uid &&
-             data.get('createdAt', request.time) == request.time;
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['email']) &&
-             data.email is string &&
-             (data.get('role', 'user') == "user" || isAdmin());
+    function validateUser(u) {
+      return u.get('email', 'x') is string;
     }
 
     // Rules
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if (isOwner(userId) || isAdmin()) && 
-                    isValidUser(request.resource.data) &&
-                    (isAdmin() || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow create: if isSignedIn() && request.auth.uid == userId && validateUser(request.resource.data);
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
+                    validateUser(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('role', resource.data.role) == resource.data.role));
     }
 
     match /admins/{adminId} {
@@ -86,40 +64,58 @@ service cloud.firestore {
     }
 
     match /materials/{materialId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(materialId) && isValidMaterial(request.resource.data);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(materialId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateMaterial(request.resource.data);
       allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
-                    isValidMaterial(request.resource.data);
+                    validateMaterial(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
       allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /products/{productId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(productId) && isValidProduct(request.resource.data);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(productId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateProduct(request.resource.data);
       allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
-                    isValidProduct(request.resource.data);
+                    validateProduct(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
       allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /sales/{saleId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(saleId) && isValidSale(request.resource.data);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(saleId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateSale(request.resource.data);
       allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
-                    isValidSale(request.resource.data);
+                    validateSale(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
       allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /vendors/{vendorId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(vendorId) && isValidVendor(request.resource.data);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(vendorId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateVendor(request.resource.data);
       allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
-                    isValidVendor(request.resource.data);
+                    validateVendor(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
       allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /stock_logs/{logId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(logId) && isValidStockLog(request.resource.data);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(logId) && 
+                    request.resource.data.userId == request.auth.uid;
       allow update, delete: if false; 
     }
   }
