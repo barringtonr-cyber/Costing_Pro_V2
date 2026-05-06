@@ -21,8 +21,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email == "barringtonr@gmail.com"
+        request.auth.token.email == "barringtonr@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
@@ -34,18 +34,23 @@ service cloud.firestore {
     function isValidMaterial(data) {
       return data.keys().hasAll(['name', 'userId']) &&
              data.name is string && data.name.size() <= 200 &&
-             data.userId == request.auth.uid;
+             data.userId == request.auth.uid &&
+             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt) &&
+             data.get('updatedAt', request.time) == request.time;
     }
 
     function isValidProduct(data) {
       return data.keys().hasAll(['name', 'userId']) &&
              data.name is string && data.name.size() <= 200 &&
-             data.userId == request.auth.uid;
+             data.userId == request.auth.uid &&
+             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt) &&
+             data.get('updatedAt', request.time) == request.time;
     }
 
     function isValidSale(data) {
       return data.keys().hasAll(['productId', 'userId']) &&
-             data.userId == request.auth.uid;
+             data.userId == request.auth.uid &&
+             (data.get('createdAt', request.time) == request.time || data.createdAt == resource.data.createdAt);
     }
 
     function isValidVendor(data) {
@@ -55,13 +60,14 @@ service cloud.firestore {
 
     function isValidStockLog(data) {
       return data.keys().hasAll(['materialId', 'userId']) &&
-             data.userId == request.auth.uid;
+             data.userId == request.auth.uid &&
+             data.get('createdAt', request.time) == request.time;
     }
 
     function isValidUser(data) {
       return data.keys().hasAll(['email']) &&
              data.email is string &&
-             (request.resource.data.role == "user" || isAdmin());
+             (data.get('role', 'user') == "user" || isAdmin());
     }
 
     // Rules
@@ -76,41 +82,45 @@ service cloud.firestore {
 
     match /admins/{adminId} {
       allow read: if isSignedIn();
-      allow write: if false; // Only manageable via console or specialized tool
+      allow write: if false; 
     }
 
     match /materials/{materialId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isEmailVerified() && isValidMaterial(request.resource.data);
-      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidMaterial(request.resource.data);
-      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(materialId) && isValidMaterial(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    isValidMaterial(request.resource.data);
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /products/{productId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isEmailVerified() && isValidProduct(request.resource.data);
-      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidProduct(request.resource.data);
-      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(productId) && isValidProduct(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    isValidProduct(request.resource.data);
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /sales/{saleId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isEmailVerified() && isValidSale(request.resource.data);
-      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidSale(request.resource.data);
-      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(saleId) && isValidSale(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    isValidSale(request.resource.data);
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /vendors/{vendorId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isEmailVerified() && isValidVendor(request.resource.data);
-      allow update: if isEmailVerified() && resource.data.userId == request.auth.uid && isValidVendor(request.resource.data);
-      allow delete: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(vendorId) && isValidVendor(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    isValidVendor(request.resource.data);
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /stock_logs/{logId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isEmailVerified() && isValidStockLog(request.resource.data);
-      allow update, delete: if false; // Logs should be immutable
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(logId) && isValidStockLog(request.resource.data);
+      allow update, delete: if false; 
     }
   }
 }

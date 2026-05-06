@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { cn } from "./lib/utils";
 import { api } from "./api";
+import { doc, getDocFromServer } from "firebase/firestore";
+import { db } from "./firebase";
 
 // Pages
 import Dashboard from "./pages/Dashboard";
@@ -60,6 +62,19 @@ function App() {
 function AppContent() {
   const { user, loading } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, "users", "connection_test"));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("offline")) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    };
+    testConnection();
+  }, []);
 
   const handleLogout = async () => {
     try {
