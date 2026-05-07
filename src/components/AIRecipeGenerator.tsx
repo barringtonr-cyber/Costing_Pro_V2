@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { GoogleGenAI, Type } from "@google/genai";
 import { api } from "../api";
 import { 
   Sparkles, 
@@ -93,8 +92,6 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
       const wicks = materials.filter(m => m.type === "Wicks");
       const sprayBases = materials.filter(m => m.type === "Spray Base");
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
       const prompt = `
         You are an expert candle and room spray maker. Create a unique recipe using the materials available in my inventory.
         
@@ -142,60 +139,46 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
           - name: The EXACT name of the material from the lists provided (or "Distilled Water")
           - quantityUsed: The amount to use (number only, in oz or pcs)
           - percentage: (Optional) For fragrances in a blend, the percentage of this fragrance relative to the total fragrance weight.
-        
-        The response MUST be ONLY the JSON object.
       `;
 
-      const responseConfig = {
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              description: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ["Candle", "Room Spray"] },
-              formula: { type: Type.STRING },
-              materials: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    quantityUsed: { type: Type.NUMBER },
-                    percentage: { type: Type.NUMBER }
-                  },
-                  required: ["name", "quantityUsed"]
-                }
-              }
-            },
-            required: ["name", "description", "materials", "type"]
+      const responseSchema = {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          type: { type: "string", enum: ["Candle", "Room Spray"] },
+          formula: { type: "string" },
+          materials: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                quantityUsed: { type: "number" },
+                percentage: { type: "number" }
+              },
+              required: ["name", "quantityUsed"]
+            }
           }
-        }
+        },
+        required: ["name", "description", "materials", "type"]
       };
 
-      let response;
-      try {
-        // Try the latest preview model first
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          ...responseConfig
-        });
-      } catch (err: any) {
-        // If high demand (503), try the more stable gemini-flash-latest
-        if (err.message?.includes("503") || err.message?.includes("high demand")) {
-          console.log("Gemini 3 high demand, falling back to Gemini Flash Latest");
-          response = await ai.models.generateContent({
-            model: "gemini-flash-latest",
-            ...responseConfig
-          });
-        } else {
-          throw err;
-        }
+      const response = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          responseSchema
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate recipe.");
       }
 
-      const recipe = JSON.parse(response.text);
+      const recipe = await response.json();
       
       // Enrich with cost data and material IDs from our materials list
       recipe.materials = recipe.materials

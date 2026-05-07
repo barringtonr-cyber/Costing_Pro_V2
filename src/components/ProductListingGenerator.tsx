@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { GoogleGenAI, Type } from "@google/genai";
 import { 
   Sparkles, 
   X, 
@@ -35,8 +34,6 @@ export default function ProductListingGenerator({ product, onClose }: ProductLis
     setGenerating(true);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
       const prompt = `
         You are a professional e-commerce copywriter. Create a high-converting product listing for a handmade candle.
         
@@ -58,54 +55,40 @@ export default function ProductListingGenerator({ product, onClose }: ProductLis
         - description: The main product description
         - features: An array of strings for key features
         - tags: An array of strings for hashtags/tags
-        
-        The response MUST be ONLY the JSON object.
       `;
 
-      const responseConfig = {
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              features: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              tags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            },
-            required: ["title", "description", "features", "tags"]
+      const responseSchema = {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          features: {
+            type: "array",
+            items: { type: "string" }
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" }
           }
-        }
+        },
+        required: ["title", "description", "features", "tags"]
       };
 
-      let response;
-      try {
-        // Try the latest preview model first
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          ...responseConfig
-        });
-      } catch (err: any) {
-        // If high demand (503), try the more stable gemini-flash-latest
-        if (err.message?.includes("503") || err.message?.includes("high demand")) {
-          console.log("Gemini 3 high demand, falling back to Gemini Flash Latest");
-          response = await ai.models.generateContent({
-            model: "gemini-flash-latest",
-            ...responseConfig
-          });
-        } else {
-          throw err;
-        }
+      const response = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          responseSchema
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate listing.");
       }
 
-      const listing = JSON.parse(response.text);
+      const listing = await response.json();
       setGeneratedListing(listing);
     } catch (err: any) {
       console.error(err);
