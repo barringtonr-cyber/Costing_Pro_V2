@@ -16,48 +16,7 @@ async function startServer() {
 
   app.use(express.json());
 
-  // AI Route
-  app.post("/api/ai/generate", async (req, res) => {
-    try {
-      const { prompt, responseSchema, model = "gemini-3-flash-preview" } = req.body;
-      
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
-      }
 
-      const { GoogleGenAI } = await import("@google/genai");
-      const genAI = new GoogleGenAI({ apiKey });
-      
-      const responseConfig = {
-        contents: prompt,
-        config: {
-          responseMimeType: responseSchema ? "application/json" : undefined,
-          responseSchema: responseSchema
-        }
-      };
-
-      const result = await genAI.models.generateContent({
-        model,
-        ...responseConfig
-      });
-      
-      const text = result.text;
-      
-      try {
-        const json = JSON.parse(text);
-        res.json(json);
-      } catch {
-        res.json({ text });
-      }
-    } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      res.status(error.status || 500).json({ 
-        error: error.message || "An error occurred during AI generation.",
-        details: error.details || []
-      });
-    }
-  });
 
   // Vite middleware for development
   let vite: any;

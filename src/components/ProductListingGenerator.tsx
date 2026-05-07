@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   Sparkles, 
   X, 
@@ -34,6 +35,12 @@ export default function ProductListingGenerator({ product, onClose }: ProductLis
     setGenerating(true);
     setError(null);
     try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY is not configured.");
+      }
+      const ai = new GoogleGenAI({ apiKey });
+
       const prompt = `
         You are a professional e-commerce copywriter. Create a high-converting product listing for a handmade candle.
         
@@ -57,38 +64,31 @@ export default function ProductListingGenerator({ product, onClose }: ProductLis
         - tags: An array of strings for hashtags/tags
       `;
 
-      const responseSchema = {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" },
-          features: {
-            type: "array",
-            items: { type: "string" }
-          },
-          tags: {
-            type: "array",
-            items: { type: "string" }
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              features: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              tags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ["title", "description", "features", "tags"]
           }
-        },
-        required: ["title", "description", "features", "tags"]
-      };
-
-      const response = await fetch("/api/ai/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          responseSchema
-        })
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate listing.");
-      }
-
-      const listing = await response.json();
+      const listing = JSON.parse(response.text);
       setGeneratedListing(listing);
     } catch (err: any) {
       console.error(err);
