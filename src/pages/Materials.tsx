@@ -86,6 +86,7 @@ export default function Materials() {
   const [piecesPerBag, setPiecesPerBag] = useState("1");
   const [sortColumn, setSortColumn] = useState<keyof Material | 'totalValue'>('type');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{ deletedCount: number; updatedProductsCount: number } | null>(null);
@@ -531,6 +532,57 @@ export default function Materials() {
     }
   };
 
+  const handleSelectAll = () => {
+    if (selectedIds.size === sortedMaterials.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedMaterials.map(m => m.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleExportSelected = () => {
+    if (selectedIds.size === 0) {
+      setNotification({ message: "Please select at least one material to export.", type: 'error' });
+      return;
+    }
+
+    const selectedMaterials = materials.filter(m => selectedIds.has(m.id));
+    const csvData = selectedMaterials.map(m => ({
+      Name: m.name,
+      Type: m.type,
+      Vendor: m.vendor,
+      "Cost Per Unit": m.costPerUnit,
+      "Quantity In Stock": m.quantityInStock,
+      "Min Stock Level": m.minStockLevel,
+      Unit: m.unit,
+      "Pieces Per Bag": m.piecesPerBag || 1,
+      "Total Value": (m.costPerUnit * m.quantityInStock).toFixed(2)
+    }));
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `materials_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setNotification({ message: `Successfully exported ${selectedIds.size} materials!`, type: 'success' });
+  };
+
   const categoryOrder: Record<string, number> = {
     "Fragrance": 1,
     "Wicks": 2,
@@ -660,6 +712,15 @@ export default function Materials() {
             <FileUp className="w-4 h-4" />
             Import CSV
           </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleExportSelected}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium animate-in zoom-in-95 duration-200"
+            >
+              <Download className="w-4 h-4" />
+              Export ({selectedIds.size})
+            </button>
+          )}
           <button
             onClick={() => {
               setIsAdding(true);
@@ -911,6 +972,14 @@ export default function Materials() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-zinc-50 border-b border-zinc-200">
+                <th className="px-6 py-4 w-10">
+                  <input
+                    type="checkbox"
+                    checked={sortedMaterials.length > 0 && selectedIds.size === sortedMaterials.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                  />
+                </th>
                 <th 
                   className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer hover:bg-zinc-100 transition-colors"
                   onClick={() => handleSort('name')}
@@ -965,7 +1034,15 @@ export default function Materials() {
             <tbody className="divide-y divide-zinc-100">
               {sortedMaterials.length > 0 ? (
                 sortedMaterials.map((material) => (
-                  <tr key={material.id} className="hover:bg-zinc-50 transition-colors">
+                  <tr key={material.id} className={cn("hover:bg-zinc-50 transition-colors", selectedIds.has(material.id) && "bg-zinc-50")}>
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(material.id)}
+                        onChange={() => toggleSelect(material.id)}
+                        className="w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <p className="font-semibold text-zinc-900">{material.name}</p>
                       <p className="text-xs text-zinc-500">
