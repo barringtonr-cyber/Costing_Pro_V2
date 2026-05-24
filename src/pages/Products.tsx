@@ -14,7 +14,8 @@ import {
   MinusCircle,
   Sparkles,
   ShoppingBag,
-  Printer
+  Printer,
+  Package
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import AIRecipeGenerator from "../components/AIRecipeGenerator";
@@ -32,6 +33,7 @@ interface Material {
   costPerUnit: number;
   unit: string;
   piecesPerBag?: number;
+  quantityInStock?: number;
 }
 
 interface ProductMaterial {
@@ -54,6 +56,8 @@ interface Product {
   totalCost: number;
   profitMargin: number;
   suggestedPrice: number;
+  quantityInStock?: number;
+  minStockLevel?: number;
 }
 
 export default function Products() {
@@ -80,6 +84,18 @@ export default function Products() {
   const [description, setDescription] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<ProductMaterial[]>([]);
   const [sellingPrice, setSellingPrice] = useState("0");
+  const [quantityInStock, setQuantityInStock] = useState("0");
+  const [minStockLevel, setMinStockLevel] = useState("5");
+
+  // Manage Inventory modal state
+  const [inventoryProduct, setInventoryProduct] = useState<Product | null>(null);
+  const [activeInventoryTab, setActiveInventoryTab] = useState<'build' | 'adjust'>('build');
+  const [produceQty, setProduceQty] = useState("10");
+  const [deductMaterials, setDeductMaterials] = useState(true);
+  const [adjustMode, setAdjustMode] = useState<'add' | 'deduct' | 'set'>('add');
+  const [adjustQty, setAdjustQty] = useState("1");
+  const [adjustNote, setAdjustNote] = useState("");
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -149,14 +165,13 @@ export default function Products() {
       totalCost,
       profitMargin: margin,
       suggestedPrice: price,
+      quantityInStock: parseInt(quantityInStock) || 0,
+      minStockLevel: parseInt(minStockLevel) || 0,
     };
 
     try {
       if (editingId) {
-        // SQLite backend doesn't have update for products in my simple implementation yet
-        // but I can delete and re-add or just implement it. For now, let's just add.
-        await api.deleteProduct(editingId);
-        await api.addProduct(productData);
+        await api.updateProduct(editingId, productData);
       } else {
         await api.addProduct(productData);
       }
@@ -173,6 +188,8 @@ export default function Products() {
     setDescription("");
     setSelectedMaterials([]);
     setSellingPrice("0");
+    setQuantityInStock("0");
+    setMinStockLevel("5");
     setIsAdding(false);
     setEditingId(null);
   };
@@ -188,6 +205,8 @@ export default function Products() {
       percentage: m.percentage
     })));
     setSellingPrice(product.suggestedPrice.toString());
+    setQuantityInStock((product.quantityInStock || 0).toString());
+    setMinStockLevel((product.minStockLevel || 5).toString());
     setEditingId(product.id);
     setIsAdding(true);
   };
@@ -548,6 +567,31 @@ export default function Products() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-6 pt-4 border-t border-zinc-100">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-500 uppercase">Quantity in Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={quantityInStock}
+                      onChange={(e) => setQuantityInStock(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none bg-white font-medium"
+                      placeholder="e.g. 0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-500 uppercase">Min Stock Level (Alert Threshold)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={minStockLevel}
+                      onChange={(e) => setMinStockLevel(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none bg-white font-medium"
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                </div>
+
                 <div className="pt-4 border-t border-zinc-200 flex items-center justify-between">
                   <div>
                     <label className="text-xs font-bold text-zinc-500 uppercase">Final Price</label>
@@ -578,6 +622,258 @@ export default function Products() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {inventoryProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900">Manage Product Inventory</h2>
+                <p className="text-xs text-zinc-500">{inventoryProduct.name}</p>
+              </div>
+              <button 
+                onClick={() => setInventoryProduct(null)} 
+                className="text-zinc-400 hover:text-zinc-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-zinc-100 bg-zinc-50/50 p-1">
+              <button
+                onClick={() => setActiveInventoryTab('build')}
+                className={cn(
+                  "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                  activeInventoryTab === 'build'
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700"
+                )}
+              >
+                Log Production / Batch Build
+              </button>
+              <button
+                onClick={() => setActiveInventoryTab('adjust')}
+                className={cn(
+                  "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                  activeInventoryTab === 'adjust'
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700"
+                )}
+              >
+                Manual Adjustments
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {inventoryError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {inventoryError}
+                </div>
+              )}
+
+              {activeInventoryTab === 'build' ? (
+                // BATCH PRODUCTION TAB
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-700">Quantity to Produce (Units / Items)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={produceQty}
+                      onChange={(e) => setProduceQty(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent font-medium"
+                    />
+                    <p className="text-[11px] text-zinc-400">Recording a batch will directly increase this finished product's inventory levels.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={deductMaterials}
+                        onChange={(e) => setDeductMaterials(e.target.checked)}
+                        className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                      />
+                      <span>Deduct raw materials automatically from stock</span>
+                    </label>
+
+                    {deductMaterials && (
+                      <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100 space-y-3">
+                        <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Required Raw Materials Summary</h4>
+                        <div className="divide-y divide-zinc-200/60 max-h-48 overflow-y-auto pr-1">
+                          {inventoryProduct.materials.map((pm, i) => {
+                            const material = materials.find(m => m.id === pm.materialId);
+                            const mult = parseFloat(produceQty) || 0;
+                            const required = (pm.quantityUsed || 0) * mult;
+                            const available = material ? (material.quantityInStock || 0) : 0;
+                            const isWater = !material && pm.materialId === 'distilled-water';
+                            const hasEnough = isWater || (available >= required);
+
+                            return (
+                              <div key={i} className="py-2 flex items-center justify-between text-xs font-semibold">
+                                <div className="space-y-0.5">
+                                  <p className="text-zinc-800">{isWater ? "Distilled Water" : (material?.name || "Unknown Material")}</p>
+                                  <p className="text-[10px] text-zinc-400 font-mono font-medium">Needs {required.toFixed(2)} {pm.unit || (material?.unit === "Piece Bag" ? "pcs" : "oz")}</p>
+                                </div>
+                                <div className="text-right">
+                                  {isWater ? (
+                                    <span className="text-[10px] bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded">Unlimited</span>
+                                  ) : hasEnough ? (
+                                    <span className="text-[10px] bg-green-50 text-green-700 font-bold px-1.5 py-0.5 rounded">
+                                      In Stock ({available.toFixed(1)})
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded">
+                                      ⚠️ Shortage ({available.toFixed(1)})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      setInventoryError(null);
+                      const qty = parseInt(produceQty) || 0;
+                      if (qty <= 0) {
+                        setInventoryError("Please enter a valid recipe quantity greater than 0.");
+                        return;
+                      }
+
+                      // Check stock shortage warnings
+                      if (deductMaterials) {
+                        const shortages = inventoryProduct.materials.filter(pm => {
+                          const mat = materials.find(m => m.id === pm.materialId);
+                          if (!mat) return false;
+                          const req = (pm.quantityUsed || 0) * qty;
+                          return (mat.quantityInStock || 0) < req;
+                        });
+
+                        if (shortages.length > 0) {
+                          const confirmDeduct = window.confirm(`Warning: Some raw ingredients are in short supply in your material stock. Proceeding will drive their inventory levels below zero. Do you want to proceed?`);
+                          if (!confirmDeduct) return;
+                        }
+                      }
+
+                      try {
+                        await api.produceProductBatch(inventoryProduct.id, qty, deductMaterials);
+                        setInventoryProduct(null);
+                        fetchData();
+                      } catch (err: any) {
+                        console.error("Batch build error:", err);
+                        setInventoryError("Failed to record recipe production batch. Please try again.");
+                      }
+                    }}
+                    className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 flex items-center justify-center gap-2"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Complete Batch Production
+                  </button>
+                </div>
+              ) : (
+                // MANUAL ADJUSTMENTS TAB
+                <div className="space-y-6">
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['add', 'deduct', 'set'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setAdjustMode(mode)}
+                        className={cn(
+                          "py-2 px-3 text-xs font-bold rounded-lg border uppercase tracking-wider",
+                          adjustMode === mode
+                            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                            : "bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+                        )}
+                      >
+                        {mode === 'add' ? 'Add (+)' : mode === 'deduct' ? 'Deduct (-)' : 'Set (=)'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Adjustment Amount</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={adjustQty}
+                        onChange={(e) => setAdjustQty(e.target.value)}
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent font-medium"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Stock Result After Action</label>
+                      <p className="text-2xl font-extrabold text-zinc-700 py-1 font-mono">
+                        {(() => {
+                          const curr = inventoryProduct.quantityInStock || 0;
+                          const val = parseInt(adjustQty) || 0;
+                          if (adjustMode === 'add') return curr + val;
+                          if (adjustMode === 'deduct') return Math.max(0, curr - val);
+                          return val;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-700">Reason / Note for direct adjustment</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Broken in transit, Year-end recount"
+                      value={adjustNote}
+                      onChange={(e) => setAdjustNote(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-sm"
+                    />
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      setInventoryError(null);
+                      const adj = parseInt(adjustQty) || 0;
+                      if (adj <= 0) {
+                        setInventoryError("Please enter a valid count.");
+                        return;
+                      }
+
+                      let currentStock = inventoryProduct.quantityInStock || 0;
+                      if (adjustMode === 'add') {
+                        currentStock += adj;
+                      } else if (adjustMode === 'deduct') {
+                        currentStock = Math.max(0, currentStock - adj);
+                      } else {
+                        currentStock = adj;
+                      }
+
+                      try {
+                        await api.updateProduct(inventoryProduct.id, {
+                          ...inventoryProduct,
+                          quantityInStock: currentStock
+                        });
+                        setInventoryProduct(null);
+                        fetchData();
+                      } catch (err: any) {
+                        console.error("Direct adjustment error:", err);
+                        setInventoryError("Failed to update finished level. Try again.");
+                      }
+                    }}
+                    className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 flex items-center justify-center gap-2"
+                  >
+                    Save Stock Adjustment
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -613,6 +909,22 @@ export default function Products() {
                       </button>
                     </>
                   )}
+                  <button 
+                    onClick={() => {
+                      setInventoryProduct(product);
+                      setActiveInventoryTab('build');
+                      setProduceQty("10");
+                      setDeductMaterials(true);
+                      setAdjustQty("1");
+                      setAdjustMode("add");
+                      setAdjustNote("");
+                      setInventoryError(null);
+                    }}
+                    className="p-2 text-zinc-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50"
+                    title="Manage Product Inventory & Manufacture"
+                  >
+                    <Package className="w-4 h-4" />
+                  </button>
                   <button onClick={() => handleEdit(product)} className="p-2 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-50">
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -623,13 +935,36 @@ export default function Products() {
               </div>
               
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                   <span className={cn(
                     "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
                     product.type === "Room Spray" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"
                   )}>
                     {product.type || "Candle"}
                   </span>
+                  {(() => {
+                    const stock = product.quantityInStock || 0;
+                    const minStock = product.minStockLevel || 5;
+                    if (stock <= 0) {
+                      return (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-rose-100 text-rose-700 tracking-wider">
+                          Out of Stock
+                        </span>
+                      );
+                    } else if (stock <= minStock) {
+                      return (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-amber-100 text-amber-700 tracking-wider">
+                          Low Stock: {stock}
+                        </span>
+                      );
+                    } else {
+                      return (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-emerald-100 text-emerald-800 tracking-wider">
+                          In Stock: {stock}
+                        </span>
+                      );
+                    }
+                  })()}
                 </div>
                 <h3 className="text-lg font-bold text-zinc-900">{product.name}</h3>
                 {product.description && <p className="text-xs text-zinc-500 italic mb-1 line-clamp-2">{product.description}</p>}

@@ -262,6 +262,73 @@ export const api = {
     }
   },
 
+  updateProduct: async (id: string, data: any) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const docRef = doc(db, COLLECTIONS.PRODUCTS, id);
+      const payload = {
+        ...sanitizeData(data),
+        updatedAt: serverTimestamp()
+      };
+      await updateDoc(docRef, payload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.PRODUCTS}/${id}`);
+    }
+  },
+
+  produceProductBatch: async (productId: string, quantity: number, deductMaterials: boolean) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const batch = writeBatch(db);
+      
+      const productRef = doc(db, COLLECTIONS.PRODUCTS, productId);
+      const productSnap = await getDoc(productRef);
+      if (!productSnap.exists()) throw new Error("Product not found");
+      const product = productSnap.data();
+
+      // 1. Deduct Materials if requested
+      if (deductMaterials && product.materials) {
+        for (const item of product.materials) {
+          const materialRef = doc(db, COLLECTIONS.MATERIALS, item.materialId);
+          const materialSnap = await getDoc(materialRef);
+          if (materialSnap.exists()) {
+            const material = materialSnap.data();
+            const quantityUsed = (item.quantityUsed || 0) * quantity;
+            const newStock = (material.quantityInStock || 0) - quantityUsed;
+            
+            batch.update(materialRef, { 
+              quantityInStock: newStock,
+              updatedAt: serverTimestamp()
+            });
+
+            // Log material stock change
+            const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
+            batch.set(logRef, {
+              materialId: item.materialId,
+              change: -quantityUsed,
+              type: 'manufacture',
+              note: `Manufactured ${quantity} x ${product.name}`,
+              userId: auth.currentUser.uid,
+              createdAt: serverTimestamp()
+            });
+          }
+        }
+      }
+
+      // 2. Increase product stock
+      const newProductStock = (product.quantityInStock || 0) + quantity;
+      batch.update(productRef, {
+        quantityInStock: newProductStock,
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      return { success: true };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, "manufacture-transaction");
+    }
+  },
+
   deleteProduct: async (id: string) => {
     try {
       await deleteDoc(doc(db, COLLECTIONS.PRODUCTS, id));
@@ -307,31 +374,40 @@ export const api = {
       if (!productSnap.exists()) throw new Error("Product not found");
       const product = productSnap.data();
 
-      // Deduct materials from stock
-      if (product.materials) {
-        for (const item of product.materials) {
-          const materialRef = doc(db, COLLECTIONS.MATERIALS, item.materialId);
-          const materialSnap = await getDoc(materialRef);
-          if (materialSnap.exists()) {
-            const material = materialSnap.data();
-            const quantityUsed = (item.quantityUsed || 0) * (data.quantitySold || 1);
-            const newStock = (material.quantityInStock || 0) - quantityUsed;
-            
-            batch.update(materialRef, { 
-              quantityInStock: newStock,
-              updatedAt: serverTimestamp()
-            });
+      if (data.fulfillFromStock) {
+        // Fulfill from pre-made product stock (Deduct from Product stock level)
+        const currentStock = product.quantityInStock || 0;
+        batch.update(productRef, {
+          quantityInStock: currentStock - (data.quantitySold || 1),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Made to order (Deduct from raw materials stock directly)
+        if (product.materials) {
+          for (const item of product.materials) {
+            const materialRef = doc(db, COLLECTIONS.MATERIALS, item.materialId);
+            const materialSnap = await getDoc(materialRef);
+            if (materialSnap.exists()) {
+              const material = materialSnap.data();
+              const quantityUsed = (item.quantityUsed || 0) * (data.quantitySold || 1);
+              const newStock = (material.quantityInStock || 0) - quantityUsed;
+              
+              batch.update(materialRef, { 
+                quantityInStock: newStock,
+                updatedAt: serverTimestamp()
+              });
 
-            // Log stock change
-            const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
-            batch.set(logRef, {
-              materialId: item.materialId,
-              change: -quantityUsed,
-              type: 'sale',
-              note: `Sale of ${data.quantitySold} x ${data.productName}`,
-              userId: auth.currentUser.uid,
-              createdAt: serverTimestamp()
-            });
+              // Log stock change
+              const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
+              batch.set(logRef, {
+                materialId: item.materialId,
+                change: -quantityUsed,
+                type: 'sale',
+                note: `Sale of ${data.quantitySold} x ${data.productName}`,
+                userId: auth.currentUser.uid,
+                createdAt: serverTimestamp()
+              });
+            }
           }
         }
       }

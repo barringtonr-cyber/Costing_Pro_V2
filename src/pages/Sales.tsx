@@ -25,6 +25,8 @@ interface Product {
   name: string;
   totalCost: number;
   suggestedPrice: number;
+  quantityInStock?: number;
+  minStockLevel?: number;
 }
 
 interface Customer {
@@ -59,6 +61,21 @@ export default function Sales() {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [quantitySold, setQuantitySold] = useState("1");
+  const [fulfillFromStock, setFulfillFromStock] = useState(false);
+
+  // Auto-detect stock and default to fulfillFromStock if stock exists
+  useEffect(() => {
+    if (selectedProductId) {
+      const prod = products.find(p => p.id === selectedProductId);
+      if (prod && (prod.quantityInStock || 0) > 0) {
+        setFulfillFromStock(true);
+      } else {
+        setFulfillFromStock(false);
+      }
+    } else {
+      setFulfillFromStock(false);
+    }
+  }, [selectedProductId, products]);
 
   const fetchData = async () => {
     try {
@@ -102,6 +119,7 @@ export default function Sales() {
         totalPrice,
         totalCost,
         profit,
+        fulfillFromStock,
         customerId: selectedCustomerId ? parseInt(selectedCustomerId) : null,
       });
       fetchData();
@@ -115,6 +133,7 @@ export default function Sales() {
     setSelectedProductId("");
     setSelectedCustomerId("");
     setQuantitySold("1");
+    setFulfillFromStock(false);
     setIsAdding(false);
     setError(null);
   };
@@ -227,20 +246,54 @@ export default function Sales() {
                 />
               </div>
 
-              {selectedProductId && (
-                <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-zinc-500">Unit Price</span>
-                    <span className="font-medium">${products.find(p => p.id === selectedProductId)?.suggestedPrice.toFixed(2)}</span>
+              {selectedProductId && (() => {
+                const prod = products.find(p => p.id === selectedProductId);
+                const stock = prod?.quantityInStock || 0;
+
+                return (
+                  <div className="space-y-3">
+                    <div className="p-3.5 bg-zinc-50 border border-zinc-200/60 rounded-xl text-xs flex flex-col gap-1.5 shadow-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-zinc-700">Finished Product Stock:</span>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wide font-sans",
+                          stock <= 0 ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-800"
+                        )}>
+                          {stock <= 0 ? "Out of Stock" : `${stock} Units Available`}
+                        </span>
+                      </div>
+
+                      <label className="flex items-center gap-2 mt-2.5 font-bold cursor-pointer text-zinc-800 select-none">
+                        <input
+                          type="checkbox"
+                          checked={fulfillFromStock}
+                          onChange={(e) => setFulfillFromStock(e.target.checked)}
+                          className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-950 h-4 w-4"
+                        />
+                        <span>Fulfill from finished product inventory</span>
+                      </label>
+                      <p className="text-[10px] text-zinc-400 font-medium leading-relaxed pl-6">
+                        {fulfillFromStock 
+                          ? "Deducts directly from finished candle warehouse inventory. Raw ingredients are not modified." 
+                          : "Generates custom order: automatically deducts raw wax, fragrance oil, and wick materials from material stock."}
+                      </p>
+                    </div>
+
+                    <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">Unit Price</span>
+                        <span className="font-medium">${prod?.suggestedPrice.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-200">
+                        <span className="text-zinc-900">Total Price</span>
+                        <span className="text-zinc-900">
+                          ${((prod?.suggestedPrice || 0) * parseInt(quantitySold || "0")).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-200">
-                    <span className="text-zinc-900">Total Price</span>
-                    <span className="text-zinc-900">
-                      ${((products.find(p => p.id === selectedProductId)?.suggestedPrice || 0) * parseInt(quantitySold || "0")).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="pt-4 flex gap-3">
                 <button

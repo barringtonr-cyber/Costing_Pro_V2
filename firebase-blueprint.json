@@ -24,10 +24,14 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Candle", "Room Spray"] },
+        "description": { "type": "string" },
         "sellingPrice": { "type": "number" },
         "totalCost": { "type": "number" },
         "profit": { "type": "number" },
         "margin": { "type": "number" },
+        "quantityInStock": { "type": "number" },
+        "minStockLevel": { "type": "number" },
         "materials": {
           "type": "array",
           "items": { "type": "object" }
