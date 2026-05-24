@@ -50,7 +50,7 @@ interface ProductMaterial {
 interface Product {
   id: string;
   name: string;
-  type?: 'Candle' | 'Room Spray';
+  type?: 'Candle' | 'Room Spray' | 'Bundle';
   description?: string;
   materials: ProductMaterial[];
   totalCost: number;
@@ -66,7 +66,7 @@ export default function Products() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<'All' | 'Candle' | 'Room Spray'>('All');
+  const [filterType, setFilterType] = useState<'All' | 'Candle' | 'Room Spray' | 'Bundle'>('All');
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
@@ -80,7 +80,7 @@ export default function Products() {
 
   // Form state
   const [name, setName] = useState("");
-  const [type, setType] = useState<'Candle' | 'Room Spray'>('Candle');
+  const [type, setType] = useState<'Candle' | 'Room Spray' | 'Bundle'>('Candle');
   const [description, setDescription] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<ProductMaterial[]>([]);
   const [sellingPrice, setSellingPrice] = useState("0");
@@ -304,6 +304,105 @@ export default function Products() {
   const currentSellingPrice = parseFloat(sellingPrice) || 0;
   const currentProfitMargin = currentSellingPrice > 0 ? ((currentSellingPrice - currentTotalCost) / currentSellingPrice) * 100 : 0;
 
+  const getMaterialCategory = (pm: ProductMaterial): "candle" | "spray" | "shared" | "unassigned" => {
+    if (!pm.materialId) return "unassigned";
+    const m = materials.find(mat => mat.id === pm.materialId);
+    if (!m) return "unassigned";
+    
+    const type = m.type;
+    const name = (m.name || "").toLowerCase();
+    
+    if (type === "Wax" || type === "Wicks") {
+      return "candle";
+    }
+    
+    if (type === "Spray Base" || name.includes("spray base") || name.includes("water") || name.includes("distilled water")) {
+      return "spray";
+    }
+    
+    if (type === "Fragrance") {
+      return "shared";
+    }
+    
+    if (type === "Vessels") {
+      if (name.includes("spray") || name.includes("bottle") || name.includes("atomizer") || name.includes("pump") || name.includes("mist")) {
+        return "spray";
+      }
+      return "candle";
+    }
+    
+    if (name.includes("spray") || name.includes("bottle") || name.includes("base")) {
+      return "spray";
+    }
+    if (name.includes("candle") || name.includes("wax") || name.includes("wick") || name.includes("jar") || name.includes("tin")) {
+      return "candle";
+    }
+    
+    return "shared";
+  };
+
+  const renderMaterialRow = (pm: ProductMaterial, index: number) => {
+    const material = materials.find(m => m.id === pm.materialId);
+    const unitSize = getMaterialBaseUnitSize(material!);
+    const costPerBaseUnit = material ? material.costPerUnit / unitSize : 0;
+    const lineCost = costPerBaseUnit * (pm.quantityUsed || 0);
+
+    return (
+      <div key={index} className="flex flex-col gap-1 p-3 bg-zinc-50/50 rounded-xl border border-zinc-100">
+        <div className="flex items-center gap-2">
+          <select
+            value={pm.materialId}
+            onChange={(e) => updateMaterialRow(index, "materialId", e.target.value)}
+            className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none bg-white font-sans"
+          >
+            {materials.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name} ({m.type}) - ${m.unit === "Piece Bag" && m.piecesPerBag && m.piecesPerBag > 1 ? (m.costPerUnit / m.piecesPerBag).toFixed(3) : m.costPerUnit}/{m.unit === "Piece Bag" ? "pc" : "oz"}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1 w-33">
+            <input
+              type="number"
+              step="0.01"
+              value={pm.quantityUsed}
+              onChange={(e) => updateMaterialRow(index, "quantityUsed", e.target.value)}
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none bg-white font-mono"
+              placeholder="Qty"
+            />
+            {material?.unit === "Piece Bag" ? (
+              <span className="text-xs text-zinc-400 w-8 text-center font-mono">pcs</span>
+            ) : (
+              <select
+                value={pm.unit || "oz"}
+                onChange={(e) => updateMaterialRow(index, "unit", e.target.value as any)}
+                className="px-1 py-1.5 border border-zinc-200 rounded-lg text-xs focus:outline-none bg-white font-mono"
+              >
+                <option value="oz">oz</option>
+                <option value="g">g</option>
+              </select>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => removeMaterialRow(index)}
+            className="p-2 text-zinc-400 hover:text-red-500 transition-colors"
+          >
+            <MinusCircle className="w-5 h-5 flex-shrink-0" />
+          </button>
+        </div>
+        <div className="flex justify-between items-center px-1">
+          <span className="text-[10px] text-zinc-400 font-medium">
+            Quantity: {pm.quantityUsed} {pm.unit || (material?.unit === "Piece Bag" ? "pcs" : "oz")}
+          </span>
+          <span className="text-xs font-bold text-zinc-600 font-mono">
+            Cost: ${lineCost.toFixed(2)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'All' || p.type === filterType;
@@ -355,8 +454,8 @@ export default function Products() {
             className="w-full pl-10 pr-4 py-2 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
           />
         </div>
-        <div className="flex p-1 bg-zinc-100 rounded-lg w-full md:w-auto">
-          {(['All', 'Candle', 'Room Spray'] as const).map((t) => (
+        <div className="flex p-1 bg-zinc-100 rounded-lg w-full md:w-auto flex-wrap gap-1 md:gap-0">
+          {(['All', 'Candle', 'Room Spray', 'Bundle'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setFilterType(t)}
@@ -367,7 +466,7 @@ export default function Products() {
                   : "text-zinc-500 hover:text-zinc-700"
               )}
             >
-              {t === 'All' ? 'All Products' : t + 's'}
+              {t === 'All' ? 'All Products' : t === 'Bundle' ? 'Bundles' : t + 's'}
             </button>
           ))}
         </div>
@@ -442,6 +541,7 @@ export default function Products() {
                   >
                     <option value="Candle">Candle Product</option>
                     <option value="Room Spray">Room Spray Product</option>
+                    <option value="Bundle">Candle & Spray Bundle</option>
                   </select>
                 </div>
               </div>
@@ -475,68 +575,87 @@ export default function Products() {
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  {selectedMaterials.map((pm, index) => {
-                    const material = materials.find(m => m.id === pm.materialId);
-                    const unitSize = getMaterialBaseUnitSize(material!);
-                    const costPerBaseUnit = material ? material.costPerUnit / unitSize : 0;
-                    const lineCost = costPerBaseUnit * (pm.quantityUsed || 0);
+                <div className="space-y-4">
+                  {type === "Bundle" ? (
+                    (() => {
+                      const candleItems: { pm: ProductMaterial; index: number }[] = [];
+                      const sprayItems: { pm: ProductMaterial; index: number }[] = [];
+                      const sharedItems: { pm: ProductMaterial; index: number }[] = [];
+                      const unassignedItems: { pm: ProductMaterial; index: number }[] = [];
 
-                    return (
-                      <div key={index} className="flex flex-col gap-1 p-3 bg-zinc-50/50 rounded-xl border border-zinc-100">
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={pm.materialId}
-                            onChange={(e) => updateMaterialRow(index, 'materialId', e.target.value)}
-                            className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none bg-white"
-                          >
-                            {materials.map(m => (
-                              <option key={m.id} value={m.id}>
-                                {m.name} ({m.type}) - ${m.unit === "Piece Bag" && m.piecesPerBag && m.piecesPerBag > 1 ? (m.costPerUnit / m.piecesPerBag).toFixed(3) : m.costPerUnit}/{m.unit === "Piece Bag" ? "pc" : "oz"}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="flex items-center gap-1 w-32">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={pm.quantityUsed}
-                              onChange={(e) => updateMaterialRow(index, 'quantityUsed', e.target.value)}
-                              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none bg-white"
-                              placeholder="Qty"
-                            />
-                            {material?.unit === "Piece Bag" ? (
-                              <span className="text-xs text-zinc-400 w-8 text-center">pcs</span>
-                            ) : (
-                              <select
-                                value={pm.unit || 'oz'}
-                                onChange={(e) => updateMaterialRow(index, 'unit', e.target.value as any)}
-                                className="px-1 py-2 border border-zinc-200 rounded-lg text-xs focus:outline-none bg-white"
-                              >
-                                <option value="oz">oz</option>
-                                <option value="g">g</option>
-                              </select>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeMaterialRow(index)}
-                            className="p-2 text-zinc-400 hover:text-red-500"
-                          >
-                            <MinusCircle className="w-5 h-5" />
-                          </button>
+                      selectedMaterials.forEach((pm, index) => {
+                        const cat = getMaterialCategory(pm);
+                        if (cat === "candle") candleItems.push({ pm, index });
+                        else if (cat === "spray") sprayItems.push({ pm, index });
+                        else if (cat === "shared") sharedItems.push({ pm, index });
+                        else unassignedItems.push({ pm, index });
+                      });
+
+                      return (
+                        <div className="space-y-4">
+                          {candleItems.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                <h4 className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-150">
+                                  🕯️ Candle Materials
+                                </h4>
+                              </div>
+                              <div className="space-y-2 border-l border-indigo-150 pl-2">
+                                {candleItems.map(item => renderMaterialRow(item.pm, item.index))}
+                              </div>
+                            </div>
+                          )}
+
+                          {sprayItems.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                                <h4 className="text-[10px] font-extrabold text-purple-700 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded border border-purple-150">
+                                  💨 Spray Materials
+                                </h4>
+                              </div>
+                              <div className="space-y-2 border-l border-purple-150 pl-2">
+                                {sprayItems.map(item => renderMaterialRow(item.pm, item.index))}
+                              </div>
+                            </div>
+                          )}
+
+                          {sharedItems.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+                                <h4 className="text-[10px] font-extrabold text-pink-700 uppercase tracking-widest bg-pink-50 px-2 py-0.5 rounded border border-pink-150">
+                                  ✨ Shared / Fragrance
+                                </h4>
+                              </div>
+                              <div className="space-y-2 border-l border-pink-150 pl-2">
+                                {sharedItems.map(item => renderMaterialRow(item.pm, item.index))}
+                              </div>
+                            </div>
+                          )}
+
+                          {unassignedItems.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse" />
+                                <h4 className="text-[10px] font-extrabold text-zinc-600 uppercase tracking-widest bg-zinc-100 px-2 py-0.5 rounded border border-zinc-250">
+                                  ? Unassigned Materials
+                                </h4>
+                              </div>
+                              <div className="space-y-2 border-l border-zinc-250 pl-2">
+                                {unassignedItems.map(item => renderMaterialRow(item.pm, item.index))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] text-zinc-400 font-medium">
-                            Quantity: {pm.quantityUsed} {pm.unit || (material?.unit === "Piece Bag" ? "pcs" : "oz")}
-                          </span>
-                          <span className="text-xs font-bold text-zinc-600">
-                            Cost: ${lineCost.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedMaterials.map((pm, index) => renderMaterialRow(pm, index))}
+                    </div>
+                  )}
                 </div>
                 {currentTotalWaxQuantity > 0 && selectedMaterials.some(pm => materials.find(m => m.id === pm.materialId)?.type === "Fragrance") && (
                   <p className="text-[10px] text-zinc-400 italic mt-1">
@@ -563,6 +682,33 @@ export default function Products() {
                     <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
                       <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Recipe Weight</p>
                       <p className="text-sm font-bold text-zinc-900">{(currentTotalSprayBaseQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
+                    </div>
+                  </div>
+                ) : type === "Bundle" ? (
+                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wax</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalWaxQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Spray Base</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalSprayBaseQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Fragrance</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalFragranceQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wicks</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalWicks} pcs</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Vessels/Bottles</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalVessels} pcs</p>
+                    </div>
+                    <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Combined Weight</p>
+                      <p className="text-sm font-bold text-zinc-900">{(currentTotalWaxQuantity + currentTotalSprayBaseQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
                     </div>
                   </div>
                 ) : (
@@ -977,9 +1123,11 @@ export default function Products() {
                 <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                   <span className={cn(
                     "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
-                    product.type === "Room Spray" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"
+                    product.type === "Room Spray" ? "bg-purple-100 text-purple-700" :
+                    product.type === "Bundle" ? "bg-pink-100 text-pink-700 border border-pink-200" :
+                    "bg-amber-100 text-amber-700"
                   )}>
-                    {product.type || "Candle"}
+                    {product.type === "Bundle" ? "Candle & Spray Bundle" : (product.type || "Candle")}
                   </span>
                   {(() => {
                     const stock = product.quantityInStock || 0;

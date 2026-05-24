@@ -39,7 +39,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
   const [error, setError] = useState<string | null>(null);
   const [generatedRecipe, setGeneratedRecipe] = useState<any>(null);
   const [userPrompt, setUserPrompt] = useState("");
-  const [productType, setProductType] = useState<"Candle" | "Room Spray" | "Auto">("Auto");
+  const [productType, setProductType] = useState<"Candle" | "Room Spray" | "Bundle" | "Auto">("Auto");
 
   const getMaterialBaseUnitSize = (material: Material) => {
     if (!material) return 1;
@@ -96,7 +96,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
       const prompt = `
         You are an expert candle and room spray maker. Create a unique recipe using the materials available in my inventory.
         
-        ${productType !== "Auto" ? `I specifically want to create a ${productType}.` : ""}
+        ${productType !== "Auto" ? `I specifically want to create a ${productType === "Bundle" ? "matching Candle and Room Spray Bundle" : productType}.` : ""}
         ${userPrompt ? `User Request: "${userPrompt}"` : "Create a creative and popular scent blend."}
 
         Available Fragrances:
@@ -124,7 +124,15 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
              a) "EcoBase Formula": 1 part Spray Base to 3 parts Distilled Water. (Add "Distilled Water" to materials list even if not in inventory, cost is 0).
              b) "Dulceria Formula": 100% Spray Base + Fragrance (no water). Used for bases sold by Dulceria Candle Supply.
            - Total weight should be 2-4oz. Fragrance load should be 5-10% of total weight.
+           - CRITICAL RULE FOR SPRAY BASES: Select and use exactly ONE single Spray Base from the available list of Spray Bases. Do NOT mix multiple different Spray Bases.
         
+        3. FOR CANDLE AND ROOM SPRAY BUNDLES (type = "Bundle"):
+           - This is a coordinated gift set. Combine the ingredients for 1 candle AND 1 room spray into a single recipe materials list.
+           - The candle part must use 7-10oz Wax, 1 Vessel, and 1 Wick.
+           - The room spray part must use 2-4oz total of exactly ONE single select Spray Base (and optional Distilled Water if utilizing EcoBase Formula) AND 1 Vessel (which functions as the room spray bottle). Do NOT mix or use multiple different Spray Bases.
+           - Both products in the bundle MUST utilize the EXACT same fragrance oil or a complementary blend of matching fragrance oils! Combine the fragrance weights for both into a single shared entry for each fragrance oil.
+           - Under description, explain how the fragrance matches or complements across both products in the gift set.
+
         General Rules:
         - Use AT MOST 3 different fragrances.
         - Specify the quantity of each material in OUNCES (oz) for wax, spray base, water, and fragrance, and PIECES (pcs) for wicks and vessels.
@@ -133,9 +141,9 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
         
         Return a JSON object with:
         - name: A creative name for the product
-        - description: A short poetic description
-        - type: Either "Candle" or "Room Spray"
-        - formula: (For Room Sprays only) Either "EcoBase" or "Dulceria"
+        - description: A short poetic description highlighting the matching candle and room spray fragrance connection
+        - type: Exactly "Bundle" if you generated both, or "Candle" / "Room Spray" depending on selection
+        - formula: Either "EcoBase" or "Dulceria" (specifically for the spray or bundle part, if applicable)
         - materials: An array of objects with:
           - name: The EXACT name of the material from the lists provided (or "Distilled Water")
           - quantityUsed: The amount to use (number only, in oz or pcs)
@@ -151,7 +159,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
             properties: {
               name: { type: Type.STRING },
               description: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ["Candle", "Room Spray"] },
+              type: { type: Type.STRING, enum: ["Candle", "Room Spray", "Bundle"] },
               formula: { type: Type.STRING },
               materials: {
                 type: Type.ARRAY,
@@ -340,19 +348,19 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
               <div className="max-w-md mx-auto space-y-4">
                 <div className="text-left space-y-1.5">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest ml-1">What are you making?</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["Auto", "Candle", "Room Spray"] as const).map((t) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["Auto", "Candle", "Room Spray", "Bundle"] as const).map((t) => (
                       <button
                         key={t}
                         onClick={() => setProductType(t)}
                         className={cn(
-                          "px-3 py-2 text-xs font-bold rounded-xl border transition-all",
+                          "px-3 py-2.5 text-xs font-bold rounded-xl border transition-all text-center",
                           productType === t
                             ? "bg-zinc-900 text-white border-zinc-900 shadow-lg shadow-zinc-200"
                             : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
                         )}
                       >
-                        {t}
+                        {t === "Bundle" ? "Candle & Spray Bundle" : t}
                       </button>
                     ))}
                   </div>
@@ -401,9 +409,11 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
                 <div className="flex items-center gap-2">
                   <span className={cn(
                     "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
-                    generatedRecipe.type === "Room Spray" ? "bg-purple-100 text-purple-700" : "bg-amber-100 text-amber-700"
+                    generatedRecipe.type === "Room Spray" ? "bg-purple-100 text-purple-700" :
+                    generatedRecipe.type === "Bundle" ? "bg-pink-100 text-pink-700 border border-pink-200" :
+                    "bg-amber-100 text-amber-700"
                   )}>
-                    {generatedRecipe.type}
+                    {generatedRecipe.type === "Bundle" ? "Candle & Spray Bundle" : generatedRecipe.type}
                   </span>
                   {generatedRecipe.formula && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest bg-zinc-100 text-zinc-600">
