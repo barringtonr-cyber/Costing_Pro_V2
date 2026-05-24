@@ -282,6 +282,24 @@ export default function Products() {
     return sum;
   }, 0);
 
+  const currentTotalSprayBaseQuantity = selectedMaterials.reduce((sum, pm) => {
+    const material = materials.find(m => m.id === pm.materialId);
+    if (material?.type === "Spray Base") {
+      let qty = pm.quantityUsed || 0;
+      if (pm.unit === 'g') qty = qty / 28.3495;
+      return sum + qty;
+    }
+    return sum;
+  }, 0);
+
+  const currentTotalVessels = selectedMaterials.reduce((sum, pm) => {
+    const material = materials.find(m => m.id === pm.materialId);
+    if (material?.type === "Vessels") {
+      return sum + (pm.quantityUsed || 0);
+    }
+    return sum;
+  }, 0);
+
   const currentTotalCost = calculateTotalCost(selectedMaterials);
   const currentSellingPrice = parseFloat(sellingPrice) || 0;
   const currentProfitMargin = currentSellingPrice > 0 ? ((currentSellingPrice - currentTotalCost) / currentSellingPrice) * 100 : 0;
@@ -528,24 +546,45 @@ export default function Products() {
               </div>
 
               <div className="bg-zinc-50 p-6 rounded-xl space-y-6 border border-zinc-100">
-                <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wax</p>
-                    <p className="text-sm font-bold text-zinc-900">{currentTotalWaxQuantity.toFixed(2)} oz</p>
+                {type === "Room Spray" ? (
+                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Spray Base</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalSprayBaseQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Fragrance</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalFragranceQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Bottles</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalVessels} pcs</p>
+                    </div>
+                    <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Recipe Weight</p>
+                      <p className="text-sm font-bold text-zinc-900">{(currentTotalSprayBaseQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Fragrance</p>
-                    <p className="text-sm font-bold text-zinc-900">{currentTotalFragranceQuantity.toFixed(2)} oz</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wax</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalWaxQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Fragrance</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalFragranceQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wicks</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalWicks} pcs</p>
+                    </div>
+                    <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Recipe Weight</p>
+                      <p className="text-sm font-bold text-zinc-900">{(currentTotalWaxQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Wicks</p>
-                    <p className="text-sm font-bold text-zinc-900">{currentTotalWicks} pcs</p>
-                  </div>
-                  <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Recipe Weight</p>
-                    <p className="text-sm font-bold text-zinc-900">{(currentTotalWaxQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
-                  </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1">
