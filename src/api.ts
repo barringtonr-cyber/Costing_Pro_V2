@@ -293,8 +293,11 @@ export const api = {
           const materialSnap = await getDoc(materialRef);
           if (materialSnap.exists()) {
             const material = materialSnap.data();
-            const quantityUsed = (item.quantityUsed || 0) * quantity;
-            const newStock = (material.quantityInStock || 0) - quantityUsed;
+            let quantityUsedInBaseUnit = (item.quantityUsed || 0) * quantity;
+            if (item.unit === 'g') {
+              quantityUsedInBaseUnit = quantityUsedInBaseUnit / 28.3495;
+            }
+            const newStock = (material.quantityInStock || 0) - quantityUsedInBaseUnit;
             
             batch.update(materialRef, { 
               quantityInStock: newStock,
@@ -305,7 +308,7 @@ export const api = {
             const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
             batch.set(logRef, {
               materialId: item.materialId,
-              change: -quantityUsed,
+              change: -quantityUsedInBaseUnit,
               type: 'manufacture',
               note: `Manufactured ${quantity} x ${product.name}`,
               userId: auth.currentUser.uid,

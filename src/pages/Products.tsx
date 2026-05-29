@@ -345,7 +345,12 @@ export default function Products() {
     const material = materials.find(m => m.id === pm.materialId);
     const unitSize = getMaterialBaseUnitSize(material!);
     const costPerBaseUnit = material ? material.costPerUnit / unitSize : 0;
-    const lineCost = costPerBaseUnit * (pm.quantityUsed || 0);
+    
+    let quantityInBaseUnit = pm.quantityUsed || 0;
+    if (pm.unit === 'g') {
+      quantityInBaseUnit = (pm.quantityUsed || 0) / 28.3495;
+    }
+    const lineCost = costPerBaseUnit * quantityInBaseUnit;
 
     return (
       <div key={index} className="flex flex-col gap-1 p-3 bg-zinc-50/50 rounded-xl border border-zinc-100">
@@ -897,7 +902,14 @@ export default function Products() {
                             const required = (pm.quantityUsed || 0) * mult;
                             const available = material ? (material.quantityInStock || 0) : 0;
                             const isWater = !material && pm.materialId === 'distilled-water';
-                            const hasEnough = isWater || (available >= required);
+                            
+                            let requiredInBaseUnit = required;
+                            let availableInDisplayUnit = available;
+                            if (pm.unit === 'g') {
+                              requiredInBaseUnit = required / 28.3495;
+                              availableInDisplayUnit = available * 28.3495;
+                            }
+                            const hasEnough = isWater || (available >= requiredInBaseUnit);
 
                             return (
                               <div key={i} className="py-2 flex items-center justify-between text-xs font-semibold">
@@ -910,11 +922,11 @@ export default function Products() {
                                     <span className="text-[10px] bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded">Unlimited</span>
                                   ) : hasEnough ? (
                                     <span className="text-[10px] bg-green-50 text-green-700 font-bold px-1.5 py-0.5 rounded">
-                                      In Stock ({available.toFixed(1)})
+                                      In Stock ({availableInDisplayUnit.toFixed(1)} {pm.unit || "oz"})
                                     </span>
                                   ) : (
                                     <span className="text-[10px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded">
-                                      ⚠️ Shortage ({available.toFixed(1)})
+                                      ⚠️ Shortage ({availableInDisplayUnit.toFixed(1)} {pm.unit || "oz"})
                                     </span>
                                   )}
                                 </div>
@@ -940,7 +952,10 @@ export default function Products() {
                         const shortages = inventoryProduct.materials.filter(pm => {
                           const mat = materials.find(m => m.id === pm.materialId);
                           if (!mat) return false;
-                          const req = (pm.quantityUsed || 0) * qty;
+                          let req = (pm.quantityUsed || 0) * qty;
+                          if (pm.unit === 'g') {
+                            req = req / 28.3495;
+                          }
                           return (mat.quantityInStock || 0) < req;
                         });
 
@@ -1168,7 +1183,7 @@ export default function Products() {
                     if (!material) return null;
                     return (
                       <span key={i} className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                        {material.name}: {pm.quantityUsed}{material.unit === "Piece Bag" ? "pcs" : "oz"}
+                        {material.name}: {pm.quantityUsed}{pm.unit || (material.unit === "Piece Bag" ? "pcs" : "oz")}
                       </span>
                     );
                   })}
@@ -1177,11 +1192,21 @@ export default function Products() {
                 {(() => {
                   const totalWax = product.materials.reduce((sum, pm) => {
                     const m = materials.find(mat => mat.id === pm.materialId);
-                    return m?.type === "Wax" ? sum + pm.quantityUsed : sum;
+                    if (m?.type === "Wax") {
+                      let qty = pm.quantityUsed || 0;
+                      if (pm.unit === 'g') qty = qty / 28.3495;
+                      return sum + qty;
+                    }
+                    return sum;
                   }, 0);
                   const totalFragrance = product.materials.reduce((sum, pm) => {
                     const m = materials.find(mat => mat.id === pm.materialId);
-                    return m?.type === "Fragrance" ? sum + pm.quantityUsed : sum;
+                    if (m?.type === "Fragrance") {
+                      let qty = pm.quantityUsed || 0;
+                      if (pm.unit === 'g') qty = qty / 28.3495;
+                      return sum + qty;
+                    }
+                    return sum;
                   }, 0);
                   
                   if (totalWax > 0 && totalFragrance > 0) {

@@ -53,7 +53,7 @@ export default function RoomSprayCalculator() {
   // Initial calculation
   useEffect(() => {
     calculate();
-  }, [formula, quantity, bottleSize, fragranceLoad]);
+  }, [formula, quantity, bottleSize, fragranceLoad, unit]);
 
   return (
     <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-full">
@@ -159,28 +159,44 @@ export default function RoomSprayCalculator() {
             <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">
               {formula === "ecoBase" ? "Base (1 part)" : "Room Spray Base"}
             </p>
-            <p className="text-lg font-black text-zinc-900 leading-none">{results.base}</p>
-            <p className="text-[10px] text-zinc-400 mt-1">{unit}</p>
+            <p className="text-lg font-black text-zinc-900 leading-none">
+              {unit === "ounce" ? `${results.base} oz` : `${results.base} g`}
+            </p>
+            <p className="text-[10px] text-zinc-400 font-mono mt-1">
+              {unit === "ounce" ? `(${(results.base * 28.3495).toFixed(2)} g)` : `(${(results.base * 0.035274).toFixed(2)} oz)`}
+            </p>
           </div>
           {formula === "ecoBase" && (
             <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-100 flex flex-col items-center justify-center text-center">
               <Droplets className="w-4 h-4 text-blue-400 mb-2" />
               <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Water (3 parts)</p>
-              <p className="text-lg font-black text-zinc-900 leading-none">{results.water}</p>
-              <p className="text-[10px] text-zinc-400 mt-1">{unit}</p>
+              <p className="text-lg font-black text-zinc-900 leading-none">
+                {unit === "ounce" ? `${results.water} oz` : `${results.water} g`}
+              </p>
+              <p className="text-[10px] text-zinc-400 font-mono mt-1">
+                {unit === "ounce" ? `(${(results.water * 28.3495).toFixed(2)} g)` : `(${(results.water * 0.035274).toFixed(2)} oz)`}
+              </p>
             </div>
           )}
           <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-100 flex flex-col items-center justify-center text-center">
             <FlaskConical className="w-4 h-4 text-teal-400 mb-2" />
             <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Fragrance</p>
-            <p className="text-lg font-black text-zinc-900 leading-none">{results.fragrance}</p>
-            <p className="text-[10px] text-zinc-400 mt-1">{unit}</p>
+            <p className="text-lg font-black text-zinc-900 leading-none">
+              {unit === "ounce" ? `${results.fragrance} oz` : `${results.fragrance} g`}
+            </p>
+            <p className="text-[10px] text-zinc-400 font-mono mt-1">
+              {unit === "ounce" ? `(${(results.fragrance * 28.3495).toFixed(2)} g)` : `(${(results.fragrance * 0.035274).toFixed(2)} oz)`}
+            </p>
           </div>
           <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-100 flex flex-col items-center justify-center text-center">
             <Scale className="w-4 h-4 text-zinc-400 mb-2" />
             <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Total Weight</p>
-            <p className="text-lg font-black text-zinc-900 leading-none">{results.total}</p>
-            <p className="text-[10px] text-zinc-400 mt-1">{unit}</p>
+            <p className="text-lg font-black text-zinc-900 leading-none">
+              {unit === "ounce" ? `${results.total} oz` : `${results.total} g`}
+            </p>
+            <p className="text-[10px] text-zinc-400 font-mono mt-1">
+              {unit === "ounce" ? `(${(results.total * 28.3495).toFixed(2)} g)` : `(${(results.total * 0.035274).toFixed(2)} oz)`}
+            </p>
           </div>
         </div>
 

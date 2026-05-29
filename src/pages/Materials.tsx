@@ -21,7 +21,8 @@ import {
   Upload,
   Sparkles,
   History,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Copy
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import Papa from "papaparse";
@@ -304,6 +305,53 @@ export default function Materials() {
       setDeletingId(null);
     } catch (error) {
       console.error("Error deleting material:", error);
+    }
+  };
+
+  const handleDuplicate = async (material: Material) => {
+    try {
+      const duplicatedMaterial = {
+        name: `${material.name} (Copy)`,
+        type: material.type,
+        vendor: material.vendor || "",
+        costPerUnit: material.costPerUnit,
+        quantityInStock: material.quantityInStock,
+        minStockLevel: material.minStockLevel || 0,
+        unit: material.unit,
+        piecesPerBag: material.piecesPerBag || 1,
+      };
+
+      await api.addMaterial(duplicatedMaterial);
+      fetchMaterials();
+      setNotification({ message: `Duplicated "${material.name}" successfully!`, type: "success" });
+    } catch (error) {
+      console.error("Error duplicating material:", error);
+      setNotification({ message: "Failed to duplicate material.", type: "error" });
+    }
+  };
+
+  const handleBulkDuplicate = async () => {
+    try {
+      const selectedMaterials = materials.filter(m => selectedIds.has(m.id));
+      for (const material of selectedMaterials) {
+        const duplicatedMaterial = {
+          name: `${material.name} (Copy)`,
+          type: material.type,
+          vendor: material.vendor || "",
+          costPerUnit: material.costPerUnit,
+          quantityInStock: material.quantityInStock,
+          minStockLevel: material.minStockLevel || 0,
+          unit: material.unit,
+          piecesPerBag: material.piecesPerBag || 1,
+        };
+        await api.addMaterial(duplicatedMaterial);
+      }
+      setSelectedIds(new Set());
+      fetchMaterials();
+      setNotification({ message: `Duplicated ${selectedMaterials.length} materials successfully!`, type: "success" });
+    } catch (error) {
+      console.error("Error bulk duplicating materials:", error);
+      setNotification({ message: "Failed to duplicate some materials.", type: "error" });
     }
   };
 
@@ -713,13 +761,22 @@ export default function Materials() {
             Import CSV
           </button>
           {selectedIds.size > 0 && (
-            <button
-              onClick={handleExportSelected}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium animate-in zoom-in-95 duration-200"
-            >
-              <Download className="w-4 h-4" />
-              Export ({selectedIds.size})
-            </button>
+            <>
+              <button
+                onClick={handleBulkDuplicate}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium animate-in zoom-in-95 duration-200 shadow-sm"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicate Selected ({selectedIds.size})
+              </button>
+              <button
+                onClick={handleExportSelected}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium animate-in zoom-in-95 duration-200"
+              >
+                <Download className="w-4 h-4" />
+                Export ({selectedIds.size})
+              </button>
+            </>
           )}
           <button
             onClick={() => {
@@ -953,6 +1010,22 @@ export default function Materials() {
                 >
                   Cancel
                 </button>
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const mat = materials.find(m => m.id === editingId);
+                      if (mat) {
+                        handleDuplicate(mat);
+                        resetForm();
+                      }
+                    }}
+                    className="flex-1 px-4 py-2 bg-zinc-100 border border-zinc-200 text-zinc-700 font-medium rounded-lg hover:bg-zinc-200 flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Copy className="w-4 h-4 text-zinc-500" />
+                    Duplicate
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="flex-1 px-4 py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 flex items-center justify-center gap-2"
@@ -1126,6 +1199,13 @@ export default function Materials() {
                           title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDuplicate(material)}
+                          className="p-2 text-zinc-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Duplicate Material"
+                        >
+                          <Copy className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setDeletingId(material.id)}
