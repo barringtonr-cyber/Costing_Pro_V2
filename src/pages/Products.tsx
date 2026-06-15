@@ -50,7 +50,7 @@ interface ProductMaterial {
 interface Product {
   id: string;
   name: string;
-  type?: 'Candle' | 'Room Spray' | 'Bundle';
+  type?: 'Candle' | 'Room Spray' | 'Bundle' | 'Car Diffuser';
   description?: string;
   materials: ProductMaterial[];
   totalCost: number;
@@ -66,7 +66,7 @@ export default function Products() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<'All' | 'Candle' | 'Room Spray' | 'Bundle'>('All');
+  const [filterType, setFilterType] = useState<'All' | 'Candle' | 'Room Spray' | 'Bundle' | 'Car Diffuser'>('All');
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
@@ -80,7 +80,7 @@ export default function Products() {
 
   // Form state
   const [name, setName] = useState("");
-  const [type, setType] = useState<'Candle' | 'Room Spray' | 'Bundle'>('Candle');
+  const [type, setType] = useState<'Candle' | 'Room Spray' | 'Bundle' | 'Car Diffuser'>('Candle');
   const [description, setDescription] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<ProductMaterial[]>([]);
   const [sellingPrice, setSellingPrice] = useState("0");
@@ -292,6 +292,16 @@ export default function Products() {
     return sum;
   }, 0);
 
+  const currentTotalDiffuserBaseQuantity = selectedMaterials.reduce((sum, pm) => {
+    const material = materials.find(m => m.id === pm.materialId);
+    if (material?.type === "Diffuser Base") {
+      let qty = pm.quantityUsed || 0;
+      if (pm.unit === 'g') qty = qty / 28.3495;
+      return sum + qty;
+    }
+    return sum;
+  }, 0);
+
   const currentTotalVessels = selectedMaterials.reduce((sum, pm) => {
     const material = materials.find(m => m.id === pm.materialId);
     if (material?.type === "Vessels") {
@@ -316,7 +326,7 @@ export default function Products() {
       return "candle";
     }
     
-    if (type === "Spray Base" || name.includes("spray base") || name.includes("water") || name.includes("distilled water")) {
+    if (type === "Spray Base" || type === "Diffuser Base" || name.includes("spray base") || name.includes("diffuser base") || name.includes("water") || name.includes("distilled water")) {
       return "spray";
     }
     
@@ -460,7 +470,7 @@ export default function Products() {
           />
         </div>
         <div className="flex p-1 bg-zinc-100 rounded-lg w-full md:w-auto flex-wrap gap-1 md:gap-0">
-          {(['All', 'Candle', 'Room Spray', 'Bundle'] as const).map((t) => (
+          {(['All', 'Candle', 'Room Spray', 'Bundle', 'Car Diffuser'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setFilterType(t)}
@@ -471,7 +481,7 @@ export default function Products() {
                   : "text-zinc-500 hover:text-zinc-700"
               )}
             >
-              {t === 'All' ? 'All Products' : t === 'Bundle' ? 'Bundles' : t + 's'}
+              {t === 'All' ? 'All Products' : t === 'Bundle' ? 'Bundles' : t === 'Car Diffuser' ? 'Car Diffusers' : t + 's'}
             </button>
           ))}
         </div>
@@ -547,6 +557,7 @@ export default function Products() {
                     <option value="Candle">Candle Product</option>
                     <option value="Room Spray">Room Spray Product</option>
                     <option value="Bundle">Candle & Spray Bundle</option>
+                    <option value="Car Diffuser">Car Diffuser Product</option>
                   </select>
                 </div>
               </div>
@@ -670,7 +681,26 @@ export default function Products() {
               </div>
 
               <div className="bg-zinc-50 p-6 rounded-xl space-y-6 border border-zinc-100">
-                {type === "Room Spray" ? (
+                {type === "Car Diffuser" ? (
+                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Diffuser Base</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalDiffuserBaseQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Fragrance</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalFragranceQuantity.toFixed(2)} oz</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Vessels</p>
+                      <p className="text-sm font-bold text-zinc-900">{currentTotalVessels} pcs</p>
+                    </div>
+                    <div className="text-center col-span-3 pt-2 border-t border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Recipe Weight</p>
+                      <p className="text-sm font-bold text-zinc-900">{(currentTotalDiffuserBaseQuantity + currentTotalFragranceQuantity).toFixed(2)} oz</p>
+                    </div>
+                  </div>
+                ) : type === "Room Spray" ? (
                   <div className="grid grid-cols-3 gap-4 pb-4 border-b border-zinc-200">
                     <div className="text-center">
                       <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Spray Base</p>
@@ -1140,9 +1170,12 @@ export default function Products() {
                     "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest",
                     product.type === "Room Spray" ? "bg-purple-100 text-purple-700" :
                     product.type === "Bundle" ? "bg-pink-100 text-pink-700 border border-pink-200" :
+                    product.type === "Car Diffuser" ? "bg-teal-100 text-teal-700 border border-teal-200" :
                     "bg-amber-100 text-amber-700"
                   )}>
-                    {product.type === "Bundle" ? "Candle & Spray Bundle" : (product.type || "Candle")}
+                    {product.type === "Bundle" ? "Candle & Spray Bundle" : 
+                     product.type === "Car Diffuser" ? "Car Diffuser" :
+                     (product.type || "Candle")}
                   </span>
                   {(() => {
                     const stock = product.quantityInStock || 0;
@@ -1199,6 +1232,15 @@ export default function Products() {
                     }
                     return sum;
                   }, 0);
+                  const totalDiffuserBase = product.materials.reduce((sum, pm) => {
+                    const m = materials.find(mat => mat.id === pm.materialId);
+                    if (m?.type === "Diffuser Base") {
+                      let qty = pm.quantityUsed || 0;
+                      if (pm.unit === 'g') qty = qty / 28.3495;
+                      return sum + qty;
+                    }
+                    return sum;
+                  }, 0);
                   const totalFragrance = product.materials.reduce((sum, pm) => {
                     const m = materials.find(mat => mat.id === pm.materialId);
                     if (m?.type === "Fragrance") {
@@ -1216,6 +1258,17 @@ export default function Products() {
                         <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                         <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
                           Fragrance Load: {load.toFixed(1)}%
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (totalDiffuserBase > 0 && totalFragrance > 0) {
+                    const load = (totalFragrance / totalDiffuserBase) * 100;
+                    return (
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                        <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">
+                          Fragrance Load: {load.toFixed(1)}% (Diffuser)
                         </span>
                       </div>
                     );

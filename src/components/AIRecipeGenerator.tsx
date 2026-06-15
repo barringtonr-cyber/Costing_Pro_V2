@@ -39,7 +39,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
   const [error, setError] = useState<string | null>(null);
   const [generatedRecipe, setGeneratedRecipe] = useState<any>(null);
   const [userPrompt, setUserPrompt] = useState("");
-  const [productType, setProductType] = useState<"Candle" | "Room Spray" | "Bundle" | "Auto">("Auto");
+  const [productType, setProductType] = useState<"Candle" | "Room Spray" | "Bundle" | "Car Diffuser" | "Auto">("Auto");
 
   const getMaterialBaseUnitSize = (material: Material) => {
     if (!material) return 1;
@@ -92,9 +92,10 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
       const vessels = materials.filter(m => m.type === "Vessels");
       const wicks = materials.filter(m => m.type === "Wicks");
       const sprayBases = materials.filter(m => m.type === "Spray Base");
+      const diffuserBases = materials.filter(m => m.type === "Diffuser Base");
 
       const prompt = `
-        You are an expert candle and room spray maker. Create a unique recipe using the materials available in my inventory.
+        You are an expert candle, room spray, and car diffuser maker. Create a unique recipe using the materials available in my inventory.
         
         ${productType !== "Auto" ? `I specifically want to create a ${productType === "Bundle" ? "matching Candle and Room Spray Bundle" : productType}.` : ""}
         ${userPrompt ? `User Request: "${userPrompt}"` : "Create a creative and popular scent blend."}
@@ -113,6 +114,9 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
 
         Available Spray Bases:
         ${sprayBases.length > 0 ? sprayBases.map(s => `- ${s.name} (Unit: ${s.unit})`).join("\n") : "NONE AVAILABLE"}
+
+        Available Diffuser Bases:
+        ${diffuserBases.length > 0 ? diffuserBases.map(d => `- ${d.name} (Unit: ${d.unit})`).join("\n") : "NONE AVAILABLE"}
 
         Recipe Formulas & Constraints:
         1. FOR CANDLES:
@@ -135,14 +139,14 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
 
         General Rules:
         - Use AT MOST 3 different fragrances.
-        - Specify the quantity of each material in OUNCES (oz) for wax, spray base, water, and fragrance, and PIECES (pcs) for wicks and vessels.
+        - Specify the quantity of each material in OUNCES (oz) for wax, spray base, diffuser base, water, and fragrance, and PIECES (pcs) for wicks and vessels.
         - If you use more than one fragrance, specify the percentage of each fragrance in the total fragrance blend.
         - ONLY use materials from the lists above (except for "Distilled Water" in EcoBase sprays). Use the EXACT names provided.
         
         Return a JSON object with:
         - name: A creative name for the product
         - description: A short poetic description highlighting the matching candle and room spray fragrance connection
-        - type: Exactly "Bundle" if you generated both, or "Candle" / "Room Spray" depending on selection
+        - type: Exactly "Bundle" if you generated both, or "Candle" / "Room Spray" / "Car Diffuser" depending on selection
         - formula: Either "EcoBase" or "Dulceria" (specifically for the spray or bundle part, if applicable)
         - materials: An array of objects with:
           - name: The EXACT name of the material from the lists provided (or "Distilled Water")
@@ -159,7 +163,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
             properties: {
               name: { type: Type.STRING },
               description: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ["Candle", "Room Spray", "Bundle"] },
+              type: { type: Type.STRING, enum: ["Candle", "Room Spray", "Bundle", "Car Diffuser"] },
               formula: { type: Type.STRING },
               materials: {
                 type: Type.ARRAY,
@@ -348,13 +352,13 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
               <div className="max-w-md mx-auto space-y-4">
                 <div className="text-left space-y-1.5">
                   <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest ml-1">What are you making?</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["Auto", "Candle", "Room Spray", "Bundle"] as const).map((t) => (
+                  <div className="flex flex-wrap gap-2">
+                    {(["Auto", "Candle", "Room Spray", "Bundle", "Car Diffuser"] as const).map((t) => (
                       <button
                         key={t}
                         onClick={() => setProductType(t)}
                         className={cn(
-                          "px-3 py-2.5 text-xs font-bold rounded-xl border transition-all text-center",
+                          "px-3 py-2 text-xs font-bold rounded-xl border transition-all text-center flex-grow min-w-[110px]",
                           productType === t
                             ? "bg-zinc-900 text-white border-zinc-900 shadow-lg shadow-zinc-200"
                             : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
