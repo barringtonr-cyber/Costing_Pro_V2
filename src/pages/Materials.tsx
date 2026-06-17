@@ -48,7 +48,7 @@ interface Vendor {
   name: string;
 }
 
-const DEFAULT_TYPES = ["Wax", "Wicks", "Fragrance", "Vessels", "Spray Base", "Diffuser Base", "Other"];
+const DEFAULT_TYPES = ["Wax", "Wicks", "Fragrance", "Vessels", "Diffuser Bottles", "Spray Base", "Diffuser Base", "Other"];
 const DEFAULT_WAX_UNITS = ["5 lbs", "10 lbs", "15 lbs", "20 lbs", "Slabs"];
 const DEFAULT_OZ_UNITS = ["0.5", "2", "4", "6", "8", "12", "16"];
 const DEFAULT_WICK_UNITS = ["Piece Bag", "Inches", "Waxed", "Pre-Waxed"];
@@ -636,7 +636,9 @@ export default function Materials() {
     "Wicks": 2,
     "Wax": 3,
     "Vessels": 4,
-    "Spray Base": 5
+    "Diffuser Bottles": 4.5,
+    "Spray Base": 5,
+    "Diffuser Base": 6
   };
 
   const sortedMaterials = [...materials]
@@ -851,7 +853,7 @@ export default function Materials() {
                       setUnit("Piece Bag");
                     } else if (newType === "Wax") {
                       setUnit("5 lbs");
-                    } else if (newType === "Fragrance" || newType === "Vessels" || newType === "Diffuser Base") {
+                    } else if (newType === "Fragrance" || newType === "Vessels" || newType === "Diffuser Bottles" || newType === "Diffuser Base") {
                       setUnit("8");
                       if (newType === "Fragrance" || newType === "Diffuser Base") setMinStockLevel("1");
                     } else {

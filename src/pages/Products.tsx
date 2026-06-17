@@ -304,7 +304,7 @@ export default function Products() {
 
   const currentTotalVessels = selectedMaterials.reduce((sum, pm) => {
     const material = materials.find(m => m.id === pm.materialId);
-    if (material?.type === "Vessels") {
+    if (material?.type === "Vessels" || material?.type === "Diffuser Bottles") {
       return sum + (pm.quantityUsed || 0);
     }
     return sum;
@@ -334,8 +334,8 @@ export default function Products() {
       return "shared";
     }
     
-    if (type === "Vessels") {
-      if (name.includes("spray") || name.includes("bottle") || name.includes("atomizer") || name.includes("pump") || name.includes("mist")) {
+    if (type === "Vessels" || type === "Diffuser Bottles") {
+      if (name.includes("spray") || name.includes("bottle") || name.includes("atomizer") || name.includes("pump") || name.includes("mist") || type === "Diffuser Bottles") {
         return "spray";
       }
       return "candle";

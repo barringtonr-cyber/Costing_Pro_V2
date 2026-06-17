@@ -89,7 +89,7 @@ export default function AIRecipeGenerator({ onClose, onSave }: AIRecipeGenerator
     try {
       const fragrances = materials.filter(m => m.type === "Fragrance");
       const waxes = materials.filter(m => m.type === "Wax");
-      const vessels = materials.filter(m => m.type === "Vessels");
+      const vessels = materials.filter(m => m.type === "Vessels" || m.type === "Diffuser Bottles");
       const wicks = materials.filter(m => m.type === "Wicks");
       const sprayBases = materials.filter(m => m.type === "Spray Base");
       const diffuserBases = materials.filter(m => m.type === "Diffuser Base");

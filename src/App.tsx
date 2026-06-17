@@ -150,11 +150,13 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
       icon: Package,
       subItems: [
         { name: "All Materials", path: "/materials" },
+        { name: "Diffuser Base", path: "/materials?type=Diffuser Base" },
+        { name: "Diffuser Bottles", path: "/materials?type=Diffuser Bottles" },
+        { name: "Fragrance", path: "/materials?type=Fragrance" },
+        { name: "Spray Base", path: "/materials?type=Spray Base" },
+        { name: "Vessels", path: "/materials?type=Vessels" },
         { name: "Wax", path: "/materials?type=Wax" },
         { name: "Wicks", path: "/materials?type=Wicks" },
-        { name: "Fragrance", path: "/materials?type=Fragrance" },
-        { name: "Vessels", path: "/materials?type=Vessels" },
-        { name: "Spray Base", path: "/materials?type=Spray Base" },
       ]
     },
     { name: "Vendors", path: "/vendors", icon: Store },
