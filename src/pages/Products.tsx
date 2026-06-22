@@ -470,20 +470,26 @@ export default function Products() {
           />
         </div>
         <div className="flex p-1 bg-zinc-100 rounded-lg w-full md:w-auto flex-wrap gap-1 md:gap-0">
-          {(['All', 'Candle', 'Room Spray', 'Bundle', 'Car Diffuser'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFilterType(t)}
-              className={cn(
-                "flex-1 md:flex-none px-4 py-1.5 text-xs font-bold rounded-md transition-all",
-                filterType === t 
-                  ? "bg-white text-zinc-900 shadow-sm" 
-                  : "text-zinc-500 hover:text-zinc-700"
-              )}
-            >
-              {t === 'All' ? 'All Products' : t === 'Bundle' ? 'Bundles' : t === 'Car Diffuser' ? 'Car Diffusers' : t + 's'}
-            </button>
-          ))}
+          {(['All', 'Candle', 'Room Spray', 'Bundle', 'Car Diffuser'] as const).map((t) => {
+            const count = t === 'All' 
+              ? products.length 
+              : products.filter(p => (p.type || 'Candle') === t).length;
+            const label = t === 'All' ? 'All Products' : t === 'Bundle' ? 'Bundles' : t === 'Car Diffuser' ? 'Car Diffusers' : t + 's';
+            return (
+              <button
+                key={t}
+                onClick={() => setFilterType(t)}
+                className={cn(
+                  "flex-1 md:flex-none px-4 py-1.5 text-xs font-bold rounded-md transition-all",
+                  filterType === t 
+                    ? "bg-white text-zinc-900 shadow-sm" 
+                    : "text-zinc-500 hover:text-zinc-700"
+                )}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -554,10 +560,10 @@ export default function Products() {
                     onChange={(e) => setType(e.target.value as any)}
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none bg-white"
                   >
-                    <option value="Candle">Candle Product</option>
-                    <option value="Room Spray">Room Spray Product</option>
-                    <option value="Bundle">Candle & Spray Bundle</option>
-                    <option value="Car Diffuser">Car Diffuser Product</option>
+                    <option value="Candle">Candle Product ({products.filter(p => (p.type || 'Candle') === 'Candle').length})</option>
+                    <option value="Room Spray">Room Spray Product ({products.filter(p => p.type === 'Room Spray').length})</option>
+                    <option value="Bundle">Candle & Spray Bundle ({products.filter(p => p.type === 'Bundle').length})</option>
+                    <option value="Car Diffuser">Car Diffuser Product ({products.filter(p => p.type === 'Car Diffuser').length})</option>
                   </select>
                 </div>
               </div>
@@ -1173,9 +1179,12 @@ export default function Products() {
                     product.type === "Car Diffuser" ? "bg-teal-100 text-teal-700 border border-teal-200" :
                     "bg-amber-100 text-amber-700"
                   )}>
-                    {product.type === "Bundle" ? "Candle & Spray Bundle" : 
-                     product.type === "Car Diffuser" ? "Car Diffuser" :
-                     (product.type || "Candle")}
+                    {(() => {
+                      const t = product.type || "Candle";
+                      const count = products.filter(p => (p.type || "Candle") === t).length;
+                      const label = t === "Bundle" ? "Candle & Spray Bundle" : t === "Car Diffuser" ? "Car Diffuser" : t;
+                      return `${label} (${count})`;
+                    })()}
                   </span>
                   {(() => {
                     const stock = product.quantityInStock || 0;
