@@ -30,7 +30,6 @@ import Vendors from "./pages/Vendors";
 import Calculator from "./pages/Calculator";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
-import Profile from "./pages/Profile";
 import UsersPage from "./pages/Users";
 
 import { AdminProvider, useAdmin } from "./context/AdminContext";
@@ -109,7 +108,7 @@ function AppContent() {
                 <Route path="/calculator" element={<Calculator />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile" element={<Navigate to="/settings?tab=profile" replace />} />
                 {user?.role === "admin" && <Route path="/users" element={<UsersPage />} />}
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
@@ -142,6 +141,10 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
     fetchProfile();
   }, [user]);
 
+  const DEFAULT_TYPES = ["Wax", "Wicks", "Fragrance", "Vessels", "Diffuser Bottles", "Spray Base", "Diffuser Base", "Other"];
+  const rawCategories = profile?.customCategories || DEFAULT_TYPES;
+  const sortedCategories = [...rawCategories].sort((a, b) => a.localeCompare(b));
+
   const navItems = [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
     { 
@@ -150,13 +153,10 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
       icon: Package,
       subItems: [
         { name: "All Materials", path: "/materials" },
-        { name: "Diffuser Base", path: "/materials?type=Diffuser Base" },
-        { name: "Diffuser Bottles", path: "/materials?type=Diffuser Bottles" },
-        { name: "Fragrance", path: "/materials?type=Fragrance" },
-        { name: "Spray Base", path: "/materials?type=Spray Base" },
-        { name: "Vessels", path: "/materials?type=Vessels" },
-        { name: "Wax", path: "/materials?type=Wax" },
-        { name: "Wicks", path: "/materials?type=Wicks" },
+        ...sortedCategories.map(cat => ({
+          name: cat,
+          path: `/materials?type=${encodeURIComponent(cat)}`
+        }))
       ]
     },
     { name: "Vendors", path: "/vendors", icon: Store },
@@ -164,7 +164,6 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
     { name: "Sales", path: "/sales", icon: ShoppingCart },
     { name: "Calculator", path: "/calculator", icon: CalculatorIcon },
     { name: "Reports", path: "/reports", icon: BarChart3 },
-    { name: "Profile", path: "/profile", icon: User },
     { name: "Settings", path: "/settings", icon: Menu },
   ];
 

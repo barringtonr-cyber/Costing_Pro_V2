@@ -62,6 +62,9 @@ export default function Sales() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [quantitySold, setQuantitySold] = useState("1");
   const [fulfillFromStock, setFulfillFromStock] = useState(false);
+  const [profileTaxRate, setProfileTaxRate] = useState<number>(8.75);
+  const [includeTax, setIncludeTax] = useState(false);
+  const [taxRateInput, setTaxRateInput] = useState("8.75");
 
   // Auto-detect stock and default to fulfillFromStock if stock exists
   useEffect(() => {
@@ -77,17 +80,26 @@ export default function Sales() {
     }
   }, [selectedProductId, products]);
 
+  // Synchronize tax input when profile tax rate is loaded
+  useEffect(() => {
+    setTaxRateInput(profileTaxRate.toString());
+  }, [profileTaxRate]);
+
   const fetchData = async () => {
     try {
       const effectiveAll = showAllData && isAdmin;
-      const [sData, pData, cData] = await Promise.all([
+      const [sData, pData, cData, profileData] = await Promise.all([
         api.getSales(effectiveAll),
         api.getProducts(effectiveAll),
-        api.getCustomers(effectiveAll)
+        api.getCustomers(effectiveAll),
+        api.getProfile()
       ]);
       setSales(sData as any);
       setProducts(pData as any);
       setCustomers(cData as any);
+      if (profileData && (profileData as any).taxRate !== undefined) {
+        setProfileTaxRate((profileData as any).taxRate);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -107,9 +119,12 @@ export default function Sales() {
     if (!product) return;
 
     const qty = parseInt(quantitySold);
-    const totalPrice = product.suggestedPrice * qty;
+    const subtotal = product.suggestedPrice * qty;
+    const taxRate = includeTax ? (parseFloat(taxRateInput) || 0) : 0;
+    const taxAmount = includeTax ? (subtotal * (taxRate / 100)) : 0;
+    const totalPrice = subtotal + taxAmount;
     const totalCost = product.totalCost * qty;
-    const profit = totalPrice - totalCost;
+    const profit = subtotal - totalCost; // Profit is defined by the subtotal (revenue pre-tax) minus total cost
 
     try {
       await api.addSale({
@@ -121,6 +136,10 @@ export default function Sales() {
         profit,
         fulfillFromStock,
         customerId: selectedCustomerId ? parseInt(selectedCustomerId) : null,
+        includeTax,
+        taxRate,
+        taxAmount,
+        subtotal
       });
       fetchData();
       resetForm();
@@ -134,6 +153,8 @@ export default function Sales() {
     setSelectedCustomerId("");
     setQuantitySold("1");
     setFulfillFromStock(false);
+    setIncludeTax(false);
+    setTaxRateInput(profileTaxRate.toString());
     setIsAdding(false);
     setError(null);
   };
@@ -152,7 +173,7 @@ export default function Sales() {
         format(new Date(s.createdAt), "MMM d, yyyy h:mm a"),
         s.productName,
         s.quantitySold,
-        `$${s.totalPrice.toFixed(2)}`,
+        `$${s.totalPrice.toFixed(2)}${(s as any).taxAmount > 0 ? ` (incl. $${(s as any).taxAmount.toFixed(2)} tax)` : ''}`,
         `$${s.profit.toFixed(2)}`
       ]),
     });
@@ -246,9 +267,47 @@ export default function Sales() {
                 />
               </div>
 
+              <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/55 space-y-3">
+                <label className="flex items-center gap-2 font-semibold cursor-pointer text-zinc-800 select-none text-sm">
+                  <input
+                    type="checkbox"
+                    checked={includeTax}
+                    onChange={(e) => setIncludeTax(e.target.checked)}
+                    className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-950 h-4 w-4"
+                  />
+                  <span>Include Sales Tax</span>
+                </label>
+                
+                {includeTax && (
+                  <div className="space-y-1.5 pl-6 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <label className="text-xs font-semibold text-zinc-600">Tax Rate (%)</label>
+                    <div className="relative rounded-lg shadow-sm max-w-[140px]">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={taxRateInput}
+                        onChange={(e) => setTaxRateInput(e.target.value)}
+                        placeholder="8.75"
+                        className="w-full px-3 py-1.5 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none pr-8 text-sm font-medium"
+                      />
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-zinc-400 font-bold text-xs">
+                        %
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {selectedProductId && (() => {
                 const prod = products.find(p => p.id === selectedProductId);
                 const stock = prod?.quantityInStock || 0;
+                const qty = parseInt(quantitySold || "0");
+                const subtotal = (prod?.suggestedPrice || 0) * qty;
+                const currentTaxRate = includeTax ? (parseFloat(taxRateInput) || 0) : 0;
+                const calculatedTax = subtotal * (currentTaxRate / 100);
+                const finalTotal = subtotal + calculatedTax;
 
                 return (
                   <div className="space-y-3">
@@ -279,15 +338,23 @@ export default function Sales() {
                       </p>
                     </div>
 
-                    <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100 space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-500">Unit Price</span>
-                        <span className="font-medium">${prod?.suggestedPrice.toFixed(2)}</span>
+                    <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-100 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-500">Subtotal ({qty} x ${prod?.suggestedPrice.toFixed(2)})</span>
+                        <span className="font-medium">${subtotal.toFixed(2)}</span>
                       </div>
+                      
+                      {includeTax && (
+                        <div className="flex justify-between text-zinc-600">
+                          <span>Sales Tax ({currentTaxRate.toFixed(2)}%)</span>
+                          <span>${calculatedTax.toFixed(2)}</span>
+                        </div>
+                      )}
+
                       <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-200">
                         <span className="text-zinc-900">Total Price</span>
                         <span className="text-zinc-900">
-                          ${((prod?.suggestedPrice || 0) * parseInt(quantitySold || "0")).toFixed(2)}
+                          ${finalTotal.toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -352,6 +419,11 @@ export default function Sales() {
                     </td>
                     <td className="px-6 py-4 font-bold text-zinc-900">
                       ${sale.totalPrice.toFixed(2)}
+                      {(sale as any).taxAmount > 0 && (
+                        <div className="text-[10px] text-zinc-400 font-medium font-sans mt-0.5">
+                          Incl. ${(sale as any).taxAmount.toFixed(2)} Tax ({(sale as any).taxRate}%)
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-green-600 font-bold">

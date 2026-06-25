@@ -18,6 +18,7 @@ import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { useAdmin } from "../context/AdminContext";
 import { useAuth } from "../context/AuthContext";
+import { cn } from "../lib/utils";
 import { 
   BarChart, 
   Bar, 
@@ -59,13 +60,83 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const { showAllData } = useAdmin();
 
+  // Calendar filtering state
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>("all"); // "all", "today", "yesterday", "week", "month", "year", "custom"
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+
+  const filterOptions = [
+    { id: "all", label: "All Time" },
+    { id: "today", label: "Today" },
+    { id: "yesterday", label: "Yesterday" },
+    { id: "week", label: "This Week" },
+    { id: "month", label: "This Month" },
+    { id: "year", label: "This Year" },
+    { id: "custom", label: "Custom Range" },
+  ];
+
+  const getFilterDates = () => {
+    if (selectedFilter === "all") return { start: "", end: "" };
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+
+    // Format helper
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+    switch (selectedFilter) {
+      case "today":
+        return { start: formatDate(todayStart), end: formatDate(now) };
+      case "yesterday":
+        return { start: formatDate(yesterdayStart), end: formatDate(yesterdayEnd) };
+      case "week":
+        return { start: formatDate(currentWeekStart), end: formatDate(now) };
+      case "month":
+        return { start: formatDate(currentMonthStart), end: formatDate(now) };
+      case "year":
+        return { start: formatDate(currentYearStart), end: formatDate(now) };
+      case "custom":
+        return { start: startDate, end: endDate };
+      default:
+        return { start: "", end: "" };
+    }
+  };
+
+  const getFilterLabel = () => {
+    if (selectedFilter === "all") return "All Time";
+    if (selectedFilter === "today") return "Today";
+    if (selectedFilter === "yesterday") return "Yesterday";
+    if (selectedFilter === "week") return "This Week";
+    if (selectedFilter === "month") return "This Month";
+    if (selectedFilter === "year") return "This Year";
+    if (selectedFilter === "custom") {
+      if (startDate && endDate) {
+        return `${format(new Date(startDate + "T00:00:00"), "MMM d")} - ${format(new Date(endDate + "T00:00:00"), "MMM d, yyyy")}`;
+      } else if (startDate) {
+        return `Since ${format(new Date(startDate + "T00:00:00"), "MMM d, yyyy")}`;
+      } else if (endDate) {
+        return `Until ${format(new Date(endDate + "T00:00:00"), "MMM d, yyyy")}`;
+      }
+      return "Custom Range";
+    }
+    return "All Time";
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
       try {
+        setLoading(true);
         const effectiveAll = showAllData && isAdmin;
+        const filterDates = getFilterDates();
         const [reportResult, profileResult] = await Promise.all([
-          api.getReports(effectiveAll),
+          api.getReports(effectiveAll, filterDates.start, filterDates.end),
           api.getProfile()
         ]);
         setData(reportResult as any);
@@ -77,7 +148,7 @@ export default function Reports() {
       }
     };
     fetchData();
-  }, [showAllData, user?.uid, isAdmin]);
+  }, [showAllData, user?.uid, isAdmin, selectedFilter, startDate, endDate]);
 
   if (loading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-zinc-900"></div></div>;
   if (!data) return <div>No data available.</div>;
@@ -244,10 +315,83 @@ export default function Reports() {
           <p className="text-zinc-500 text-sm">Comprehensive overview of your business performance.</p>
         </div>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-2 px-4 py-2 border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors text-sm font-medium text-zinc-600">
-            <Calendar className="w-4 h-4" />
-            Last 30 Days
-          </button>
+          <div className="relative" id="calendar-filter-dropdown-container">
+            <button 
+              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-600 font-medium hover:bg-zinc-50 transition-colors shadow-sm",
+                selectedFilter !== "all" && "border-zinc-950 text-zinc-950 bg-zinc-50/50 font-semibold"
+              )}
+            >
+              <Calendar className="w-4 h-4 text-zinc-500" />
+              <span>{getFilterLabel()}</span>
+            </button>
+
+            {isCalendarOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setIsCalendarOpen(false)}
+                />
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-zinc-200 rounded-2xl shadow-xl z-20 p-4 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Filter by Date</p>
+                  <div className="space-y-1">
+                    {filterOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          setSelectedFilter(opt.id);
+                          if (opt.id !== "custom") {
+                            setIsCalendarOpen(false);
+                          }
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-between",
+                          selectedFilter === opt.id 
+                            ? "bg-zinc-950 text-white" 
+                            : "text-zinc-600 hover:bg-zinc-50"
+                        )}
+                      >
+                        <span>{opt.label}</span>
+                        {selectedFilter === opt.id && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedFilter === "custom" && (
+                    <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3 animate-in fade-in duration-200">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-500 mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-zinc-950 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-500 mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-zinc-950 focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setIsCalendarOpen(false)}
+                        className="w-full py-2 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors mt-2"
+                      >
+                        Apply Filter
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <button 
             onClick={exportPDF}
             className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors text-sm font-medium"

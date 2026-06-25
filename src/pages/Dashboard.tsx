@@ -45,12 +45,18 @@ interface Sale {
 
 export default function Dashboard() {
   const [report, setReport] = useState<ReportData | null>(null);
-  const [recentSales, setRecentSales] = useState<Sale[]>([]);
+  const [allSales, setAllSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const { showAllData } = useAdmin();
+
+  // Calendar filtering state
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string>("all"); // "all", "today", "yesterday", "week", "month", "year", "custom"
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   const fetchData = async () => {
     try {
@@ -62,7 +68,7 @@ export default function Dashboard() {
         api.getSales(effectiveAll)
       ]);
       setReport(rData as any);
-      setRecentSales(sData.slice(0, 5) as any);
+      setAllSales(sData as any);
       setError(null);
     } catch (err: any) {
       console.error("Dashboard data fetch error:", err);
@@ -86,6 +92,107 @@ export default function Dashboard() {
     fetchData();
   }, [showAllData, isAdmin]);
 
+  const filterOptions = [
+    { id: "all", label: "All Time" },
+    { id: "today", label: "Today" },
+    { id: "yesterday", label: "Yesterday" },
+    { id: "week", label: "This Week" },
+    { id: "month", label: "This Month" },
+    { id: "year", label: "This Year" },
+    { id: "custom", label: "Custom Range" },
+  ];
+
+  const getFilterLabel = () => {
+    if (selectedFilter === "all") return "All Time";
+    if (selectedFilter === "today") return "Today";
+    if (selectedFilter === "yesterday") return "Yesterday";
+    if (selectedFilter === "week") return "This Week";
+    if (selectedFilter === "month") return "This Month";
+    if (selectedFilter === "year") return "This Year";
+    if (selectedFilter === "custom") {
+      if (startDate && endDate) {
+        return `${format(new Date(startDate + "T00:00:00"), "MMM d")} - ${format(new Date(endDate + "T00:00:00"), "MMM d, yyyy")}`;
+      } else if (startDate) {
+        return `Since ${format(new Date(startDate + "T00:00:00"), "MMM d, yyyy")}`;
+      } else if (endDate) {
+        return `Until ${format(new Date(endDate + "T00:00:00"), "MMM d, yyyy")}`;
+      }
+      return "Custom Range";
+    }
+    return "All Time";
+  };
+
+  const getFilteredSales = () => {
+    if (selectedFilter === "all") return allSales;
+
+    const now = new Date();
+    
+    // Start of today (00:00:00)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Start of yesterday
+    const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+
+    // Start of this week (Sunday)
+    const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+
+    // Start of this month
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Start of this year
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+
+    return allSales.filter(sale => {
+      const saleDate = new Date(sale.createdAt);
+      
+      switch (selectedFilter) {
+        case "today":
+          return saleDate >= todayStart;
+        case "yesterday":
+          return saleDate >= yesterdayStart && saleDate <= yesterdayEnd;
+        case "week":
+          return saleDate >= currentWeekStart;
+        case "month":
+          return saleDate >= currentMonthStart;
+        case "year":
+          return saleDate >= currentYearStart;
+        case "custom":
+          let matches = true;
+          if (startDate) {
+            const start = new Date(startDate + "T00:00:00");
+            matches = matches && saleDate >= start;
+          }
+          if (endDate) {
+            const end = new Date(endDate + "T23:59:59");
+            matches = matches && saleDate <= end;
+          }
+          return matches;
+        default:
+          return true;
+      }
+    });
+  };
+
+  const filteredSales = getFilteredSales();
+
+  const totalSalesValue = filteredSales.reduce((sum, s: any) => sum + (s.totalPrice || 0), 0);
+  const totalCostValue = filteredSales.reduce((sum, s: any) => sum + (s.totalCost || 0), 0);
+  const totalProfitValue = filteredSales.reduce((sum, s: any) => sum + (s.profit || 0), 0);
+
+  const cogsByProductMap = filteredSales.reduce((acc: any, s: any) => {
+    const productName = s.productName || 'Unknown';
+    if (!acc[productName]) {
+      acc[productName] = { productName, totalCost: 0, totalQuantity: 0 };
+    }
+    acc[productName].totalCost += s.totalCost || 0;
+    acc[productName].totalQuantity += s.quantitySold || 0;
+    return acc;
+  }, {});
+
+  const displayedCogsByProduct: COGSProduct[] = (Object.values(cogsByProductMap) as COGSProduct[]).sort((a, b) => b.totalCost - a.totalCost);
+  const recentDisplayedSales = filteredSales.slice(0, 5);
+
   const exportPDF = () => {
     if (!report) return;
     const doc = new jsPDF();
@@ -94,16 +201,17 @@ export default function Dashboard() {
     doc.text("Business Performance Report", 14, 22);
     doc.setFontSize(11);
     doc.text(`Generated on ${format(new Date(), "MMMM d, yyyy")}`, 14, 30);
+    doc.text(`Period: ${getFilterLabel()}`, 14, 36);
 
     // Summary Stats
     autoTable(doc, {
-      startY: 40,
+      startY: 42,
       head: [['Metric', 'Value']],
       body: [
         ['Total Inventory Value', `$${report.inventoryValue.toFixed(2)}`],
-        ['Total Sales Revenue', `$${report.totalSales.toFixed(2)}`],
-        ['Total Cost of Goods (COGS)', `$${report.totalCost.toFixed(2)}`],
-        ['Total Net Profit', `$${report.totalProfit.toFixed(2)}`],
+        ['Total Sales Revenue', `$${totalSalesValue.toFixed(2)}`],
+        ['Total Cost of Goods (COGS)', `$${totalCostValue.toFixed(2)}`],
+        ['Total Net Profit', `$${totalProfitValue.toFixed(2)}`],
       ],
       theme: 'striped',
     });
@@ -115,14 +223,14 @@ export default function Dashboard() {
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 20,
       head: [['Product', 'Quantity Sold', 'Total COGS']],
-      body: (report.cogsByProduct || []).map(p => [
+      body: (displayedCogsByProduct || []).map(p => [
         p.productName,
         p.totalQuantity.toString(),
         `$${p.totalCost.toFixed(2)}`
       ]),
     });
 
-    doc.save(`business-report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    doc.save(`business-report-${getFilterLabel().toLowerCase().replace(/\s+/g, '-')}-${format(new Date(), "yyyy-MM-dd")}.pdf`);
   };
 
   if (loading) {
@@ -168,27 +276,27 @@ export default function Dashboard() {
     },
     {
       name: "Total Sales Revenue",
-      value: `$${report.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${totalSalesValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: ShoppingCart,
       color: "text-green-600",
       bg: "bg-green-50",
-      description: "Lifetime revenue recorded"
+      description: selectedFilter === "all" ? "Lifetime revenue recorded" : `${getFilterLabel()} revenue`
     },
     {
       name: "Total Cost of Goods",
-      value: `$${report.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${totalCostValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: Activity,
       color: "text-red-600",
       bg: "bg-red-50",
-      description: "Lifetime cost of materials sold"
+      description: selectedFilter === "all" ? "Lifetime cost of materials sold" : `${getFilterLabel()} material cost`
     },
     {
       name: "Total Net Profit",
-      value: `$${report.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${totalProfitValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: TrendingUp,
       color: "text-zinc-900",
       bg: "bg-zinc-100",
-      description: "Lifetime profit (Revenue - Cost)"
+      description: selectedFilter === "all" ? "Lifetime profit (Revenue - Cost)" : `${getFilterLabel()} profit`
     }
   ];
 
@@ -207,9 +315,83 @@ export default function Dashboard() {
             <FileDown className="w-4 h-4" />
             Export PDF
           </button>
-          <div className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-600 font-medium">
-            <Calendar className="w-4 h-4" />
-            {format(new Date(), "MMMM d, yyyy")}
+          
+          <div className="relative" id="calendar-filter-dropdown-container">
+            <button 
+              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-600 font-medium hover:bg-zinc-50 transition-colors shadow-sm",
+                selectedFilter !== "all" && "border-zinc-950 text-zinc-950 bg-zinc-50/50 font-semibold"
+              )}
+            >
+              <Calendar className="w-4 h-4 text-zinc-500" />
+              <span>{getFilterLabel()}</span>
+            </button>
+
+            {isCalendarOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setIsCalendarOpen(false)}
+                />
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-zinc-200 rounded-2xl shadow-xl z-20 p-4 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Filter by Date</p>
+                  <div className="space-y-1">
+                    {filterOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          setSelectedFilter(opt.id);
+                          if (opt.id !== "custom") {
+                            setIsCalendarOpen(false);
+                          }
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-between",
+                          selectedFilter === opt.id 
+                            ? "bg-zinc-950 text-white" 
+                            : "text-zinc-600 hover:bg-zinc-50"
+                        )}
+                      >
+                        <span>{opt.label}</span>
+                        {selectedFilter === opt.id && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedFilter === "custom" && (
+                    <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3 animate-in fade-in duration-200">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-500 mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-zinc-950 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-500 mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-zinc-950 focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setIsCalendarOpen(false)}
+                        className="w-full py-2 bg-zinc-950 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors mt-2"
+                      >
+                        Apply Filter
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -246,9 +428,9 @@ export default function Dashboard() {
               <span className="text-xs text-zinc-500 font-medium">By Product</span>
             </div>
             <div className="p-6">
-              {(report.cogsByProduct && report.cogsByProduct.length > 0) ? (
+              {(displayedCogsByProduct && displayedCogsByProduct.length > 0) ? (
                 <div className="space-y-4">
-                  {report.cogsByProduct.map((p, i) => (
+                  {displayedCogsByProduct.map((p, i) => (
                     <div key={i} className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="font-medium text-zinc-700">{p.productName}</span>
@@ -257,12 +439,12 @@ export default function Dashboard() {
                       <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-zinc-900 transition-all duration-1000"
-                          style={{ width: `${(p.totalCost / (report.totalCost || 1)) * 100}%` }}
+                          style={{ width: `${(p.totalCost / (totalCostValue || 1)) * 100}%` }}
                         ></div>
                       </div>
                       <div className="flex justify-between text-[10px] text-zinc-400 uppercase font-bold">
                         <span>{p.totalQuantity} Units Sold</span>
-                        <span>{((p.totalCost / (report.totalCost || 1)) * 100).toFixed(1)}% of total COGS</span>
+                        <span>{((p.totalCost / (totalCostValue || 1)) * 100).toFixed(1)}% of total COGS</span>
                       </div>
                     </div>
                   ))}
@@ -282,11 +464,11 @@ export default function Dashboard() {
               <span className="text-xs text-zinc-500 font-medium">Latest Transactions</span>
             </div>
             <div className="p-6 flex-1 flex flex-col justify-center">
-              {recentSales.length > 0 ? (
+              {recentDisplayedSales.length > 0 ? (
                 <div className="space-y-6">
                   <div className="space-y-3">
                     <div className="space-y-2">
-                      {recentSales.map((sale, i) => (
+                      {recentDisplayedSales.map((sale, i) => (
                         <div key={i} className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl border border-zinc-100">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-zinc-400 border border-zinc-200">
@@ -295,7 +477,7 @@ export default function Dashboard() {
                             <div>
                               <p className="text-sm font-bold text-zinc-900">{sale.productName}</p>
                               <p className="text-[10px] text-zinc-500">
-                                {sale.createdAt?.toDate ? format(sale.createdAt.toDate(), "MMM d, h:mm a") : "Just now"}
+                                {sale.createdAt ? format(new Date(sale.createdAt), "MMM d, h:mm a") : "Just now"}
                               </p>
                             </div>
                           </div>
@@ -329,19 +511,19 @@ export default function Dashboard() {
                 <h2 className="text-xl font-bold mb-2">Business Health</h2>
                 <p className="text-zinc-400 text-sm leading-relaxed">
                   Your current inventory value is <span className="text-white font-bold">${report.inventoryValue.toFixed(2)}</span>. 
-                  {report.totalProfit > 0 ? " You're operating profitably!" : " Start recording sales to track your growth."}
+                  {totalProfitValue > 0 ? " You're operating profitably!" : " Start recording sales to track your growth."}
                 </p>
               </div>
 
               <div className="pt-6 border-t border-white/10">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-zinc-500 uppercase">Profitability Ratio</span>
-                  <span className="text-xs font-bold text-white">{report.totalSales > 0 ? ((report.totalProfit / report.totalSales) * 100).toFixed(1) : 0}%</span>
+                  <span className="text-xs font-bold text-white">{totalSalesValue > 0 ? ((totalProfitValue / totalSalesValue) * 100).toFixed(1) : 0}%</span>
                 </div>
                 <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-white transition-all duration-1000 ease-out" 
-                    style={{ width: `${Math.min(100, Math.max(0, report.totalSales > 0 ? (report.totalProfit / report.totalSales) * 100 : 0))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, totalSalesValue > 0 ? (totalProfitValue / totalSalesValue) * 100 : 0))}%` }}
                   ></div>
                 </div>
               </div>

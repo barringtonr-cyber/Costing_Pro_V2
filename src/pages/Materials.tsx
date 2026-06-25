@@ -127,17 +127,21 @@ export default function Materials() {
   const fetchMaterials = async () => {
     try {
       const effectiveAll = showAllData && isAdmin;
-      const [mList, vList, tList, uList] = await Promise.all([
+      const [mList, vList, tList, uList, userProfile] = await Promise.all([
         api.getMaterials(effectiveAll),
         api.getVendors(effectiveAll),
         api.getMaterialTypes(effectiveAll),
-        api.getMaterialUnits("Wax", effectiveAll)
+        api.getMaterialUnits("Wax", effectiveAll),
+        api.getProfile()
       ]);
       setMaterials(mList as any);
       setVendors(vList as any);
       
-      // Merge default types with types from database
-      const mergedTypes = Array.from(new Set([...DEFAULT_TYPES, ...tList]));
+      const customCategories = (userProfile as any)?.customCategories || DEFAULT_TYPES;
+      // Merge custom categories with types from database
+      const mergedTypes = Array.from(new Set([...customCategories, ...tList]));
+      // Sort alphabetically (ascending)
+      mergedTypes.sort((a, b) => a.localeCompare(b));
       setTypes(mergedTypes);
 
       // Merge default wax units with units from database
@@ -631,16 +635,6 @@ export default function Materials() {
     setNotification({ message: `Successfully exported ${selectedIds.size} materials!`, type: 'success' });
   };
 
-  const categoryOrder: Record<string, number> = {
-    "Fragrance": 1,
-    "Wicks": 2,
-    "Wax": 3,
-    "Vessels": 4,
-    "Diffuser Bottles": 4.5,
-    "Spray Base": 5,
-    "Diffuser Base": 6
-  };
-
   const sortedMaterials = [...materials]
     .filter((m) => {
       const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -650,8 +644,10 @@ export default function Materials() {
     .sort((a, b) => {
       // Primary sort by category order if sorting by type
       if (sortColumn === 'type') {
-        const orderA = categoryOrder[a.type] || 99;
-        const orderB = categoryOrder[b.type] || 99;
+        const indexA = types.indexOf(a.type);
+        const indexB = types.indexOf(b.type);
+        const orderA = indexA !== -1 ? indexA : 999;
+        const orderB = indexB !== -1 ? indexB : 999;
         
         if (orderA !== orderB) {
           return sortDirection === 'asc' ? orderA - orderB : orderB - orderA;

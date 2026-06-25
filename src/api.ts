@@ -608,7 +608,7 @@ export const api = {
   },
 
   // Reports (Aggregation done client-side for simplicity, but using Firebase data)
-  getReports: async (all: boolean = false) => {
+  getReports: async (all: boolean = false, startDate?: string, endDate?: string) => {
     if (!auth.currentUser && !all) return null;
     try {
       const salesQuery = all 
@@ -624,7 +624,20 @@ export const api = {
         getDocs(materialsQuery)
       ]);
 
-      const sales = salesSnap.docs.map(d => ({ ...d.data(), createdAt: d.data().createdAt?.toDate?.()?.toISOString() }));
+      let sales = salesSnap.docs.map(d => ({ 
+        ...d.data(), 
+        createdAt: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString() 
+      }));
+
+      if (startDate) {
+        const start = new Date(startDate + "T00:00:00");
+        sales = sales.filter((s: any) => new Date(s.createdAt) >= start);
+      }
+      if (endDate) {
+        const end = new Date(endDate + "T23:59:59");
+        sales = sales.filter((s: any) => new Date(s.createdAt) <= end);
+      }
+
       const materials = materialsSnap.docs.map(d => d.data());
 
       const totalSales = sales.reduce((sum, s: any) => sum + (s.totalPrice || 0), 0);
