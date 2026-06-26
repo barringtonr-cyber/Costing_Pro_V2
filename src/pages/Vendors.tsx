@@ -21,7 +21,10 @@ import {
   TrendingUp,
   ShoppingBag,
   Package,
-  FileText
+  FileText,
+  Check,
+  Sparkles,
+  UploadCloud
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -51,6 +54,7 @@ interface Material {
   unit: string;
   piecesPerBag?: number;
   updatedAt?: any;
+  isPending?: boolean;
 }
 
 interface Product {
@@ -64,6 +68,18 @@ interface Product {
   suggestedPrice: number;
   quantityInStock?: number;
   minStockLevel?: number;
+}
+
+interface OrderItem {
+  materialId: string;
+  isCustom?: boolean;
+  customName?: string;
+  customType?: string;
+  customUnit?: string;
+  quantity: string;
+  costPerUnit: string;
+  lotNumber: string;
+  status: "Created" | "Placed" | "Received";
 }
 
 export default function Vendors() {
@@ -99,12 +115,148 @@ export default function Vendors() {
 
   // Record Order states
   const [isOrdering, setIsOrdering] = useState(false);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([
+    { materialId: "", quantity: "1", costPerUnit: "", lotNumber: "", status: "Received" }
+  ]);
+  const [shippingCost, setShippingCost] = useState("0");
   const [orderMaterialId, setOrderMaterialId] = useState("");
   const [orderQuantity, setOrderQuantity] = useState("10");
   const [orderPrice, setOrderPrice] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [vendorLogs, setVendorLogs] = useState<any[]>([]);
+
+  // AI Receipt Import states
+  const [isImportingReceipt, setIsImportingReceipt] = useState(false);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileChange(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (file: File) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setReceiptError("File size exceeds the 10MB limit.");
+      return;
+    }
+    
+    setReceiptError(null);
+    setIsUploadingReceipt(true);
+    
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64String = reader.result as string;
+        const base64Data = base64String.split(",")[1];
+        
+        const vendor = vendors.find(v => v.id === selectedVendorId);
+        const vendorMats = materials.filter(
+          m => m.vendor?.toLowerCase() === vendor?.name?.toLowerCase()
+        ).map(m => ({
+          id: m.id,
+          name: m.name,
+          unit: m.unit,
+          costPerUnit: m.costPerUnit
+        }));
+
+        const response = await fetch("/api/receipt/import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileData: base64Data,
+            mimeType: file.type || "image/jpeg",
+            vendorMaterials: vendorMats,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to parse receipt");
+        }
+        
+        const data = await response.json();
+        
+        if (data.items && Array.isArray(data.items)) {
+          const mappedItems: OrderItem[] = data.items.map((item: any) => ({
+            materialId: item.matchedMaterialId || "",
+            isCustom: !!item.isCustom,
+            customName: item.customName || "",
+            customType: item.customType || "Other",
+            customUnit: item.customUnit || "units",
+            quantity: item.quantity ? item.quantity.toString() : "1",
+            costPerUnit: item.costPerUnit ? item.costPerUnit.toString() : "0",
+            lotNumber: item.lotNumber || "",
+            status: "Received"
+          }));
+          
+          setOrderItems(mappedItems.length > 0 ? mappedItems : [
+            { materialId: "", quantity: "1", costPerUnit: "", lotNumber: "", status: "Received" }
+          ]);
+          setShippingCost(data.shippingCost ? data.shippingCost.toString() : "0");
+          
+          setIsImportingReceipt(false);
+          setIsOrdering(true);
+        } else {
+          throw new Error("Invalid response format from server");
+        }
+      } catch (err: any) {
+        console.error(err);
+        setReceiptError(err.message || "An error occurred while processing the receipt.");
+      } finally {
+        setIsUploadingReceipt(false);
+      }
+    };
+    
+    reader.onerror = () => {
+      setReceiptError("Failed to read file.");
+      setIsUploadingReceipt(false);
+    };
+    
+    reader.readAsDataURL(file);
+  };
+
+  const handleOpenOrderModal = () => {
+    const selectedVendor = vendors.find(v => v.id === selectedVendorId);
+    let initialMatId = "";
+    let initialCost = "";
+    if (selectedVendor) {
+      const vendorMats = materials.filter(
+        m => m.vendor?.toLowerCase() === selectedVendor.name?.toLowerCase()
+      );
+      if (vendorMats.length > 0) {
+        initialMatId = vendorMats[0].id;
+        initialCost = vendorMats[0].costPerUnit.toString();
+      }
+    }
+    setOrderItems([{
+      materialId: initialMatId,
+      quantity: "1",
+      costPerUnit: initialCost,
+      lotNumber: "LOT-" + Math.floor(Math.random() * 900000 + 100000),
+      status: "Received"
+    }]);
+    setShippingCost("0");
+    setIsOrdering(true);
+  };
 
   const fetchData = async () => {
     try {
@@ -244,40 +396,78 @@ export default function Vendors() {
 
   const handleRecordOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderMaterialId || !orderQuantity) return;
+    if (!selectedVendor) return;
+    
+    const invalid = orderItems.some(item => {
+      if (item.isCustom) {
+        return !item.customName?.trim() || !item.quantity;
+      }
+      return !item.materialId || !item.quantity;
+    });
+    if (invalid) {
+      alert("Please configure all materials and quantities correctly.");
+      return;
+    }
 
     setIsSubmittingOrder(true);
     try {
-      const qty = parseFloat(orderQuantity);
-      const selectedMat = materials.find(m => m.id === orderMaterialId);
+      const parsedShipping = parseFloat(shippingCost) || 0;
 
-      if (selectedMat) {
-        // 1. Add Stock Log
-        await api.addStockLog({
-          materialId: orderMaterialId,
-          type: "add",
-          quantity: qty,
-          note: orderNote || "Replenishment Order",
-        });
+      for (const item of orderItems) {
+        const qty = parseFloat(item.quantity);
+        let materialIdToUse = item.materialId;
 
-        // 2. Update Material Stock and cost
-        const currentQty = selectedMat.quantityInStock || 0;
-        const newQty = currentQty + qty;
-        const updatePayload: any = { quantityInStock: newQty };
-        if (orderPrice) {
-          updatePayload.costPerUnit = parseFloat(orderPrice);
+        if (item.isCustom) {
+          // Create the custom material first!
+          const newMat = await api.addMaterial({
+            name: item.customName?.trim() || "Custom Material",
+            type: item.customType || "Other",
+            unit: item.customUnit || "units",
+            costPerUnit: parseFloat(item.costPerUnit) || 0,
+            quantityInStock: item.status === "Received" ? qty : 0,
+            minStockLevel: 5,
+            vendor: selectedVendor.name,
+            isPending: item.status !== "Received"
+          });
+          
+          if (newMat && newMat.id) {
+            materialIdToUse = newMat.id;
+          } else {
+            throw new Error("Failed to create custom material document.");
+          }
         }
 
-        await api.updateMaterial(orderMaterialId, updatePayload);
+        if (materialIdToUse) {
+          // 1. Add Stock Log with status and shipping details
+          await api.addStockLog({
+            materialId: materialIdToUse,
+            type: "add",
+            quantity: qty,
+            note: item.lotNumber ? `Lot: ${item.lotNumber}` : "Replenishment Order",
+            status: item.status,
+            shippingCost: parsedShipping / orderItems.length, // distribute flat shipping cost evenly
+            costPerUnit: parseFloat(item.costPerUnit) || 0
+          });
 
-        // 3. Refresh data & close modal
-        await fetchData();
-        setIsOrdering(false);
-        setOrderMaterialId("");
-        setOrderQuantity("10");
-        setOrderPrice("");
-        setOrderNote("");
+          // 2. ONLY Update Material Stock and cost if it's an existing material AND status is "Received"
+          if (!item.isCustom && item.status === "Received") {
+            const selectedMat = materials.find(m => m.id === materialIdToUse);
+            if (selectedMat) {
+              const currentQty = selectedMat.quantityInStock || 0;
+              const newQty = currentQty + qty;
+              const updatePayload: any = { quantityInStock: newQty };
+              if (item.costPerUnit) {
+                updatePayload.costPerUnit = parseFloat(item.costPerUnit);
+              }
+              await api.updateMaterial(materialIdToUse, updatePayload);
+            }
+          }
+        }
       }
+
+      // 3. Refresh data & close modal
+      await fetchData();
+      setIsOrdering(false);
     } catch (err) {
       console.error("Failed to record order:", err);
       alert("Error recording material order.");
@@ -332,7 +522,7 @@ export default function Vendors() {
   if (selectedVendor) {
     // Filter materials supplied by this vendor
     const vendorMaterials = materials.filter(
-      m => m.vendor?.toLowerCase() === selectedVendor.name?.toLowerCase()
+      m => m.vendor?.toLowerCase() === selectedVendor.name?.toLowerCase() && !m.isPending
     );
 
     // Filter products using this vendor's materials
@@ -354,6 +544,12 @@ export default function Vendors() {
     // Stock Health
     const lowStockMaterials = vendorMaterials.filter(m => m.quantityInStock <= m.minStockLevel);
     const lowStockCount = lowStockMaterials.length;
+
+    // Active / Pending orders computed from logs
+    const activeOrders = vendorLogs.filter(log => log.status === "Created" || log.status === "Placed");
+    const activeOrdersCount = activeOrders.length;
+    const createdCount = vendorLogs.filter(log => log.status === "Created").length;
+    const placedCount = vendorLogs.filter(log => log.status === "Placed").length;
 
     // Filter materials inside search in detailed view
     const displayedDetailMaterials = vendorMaterials.filter(m => 
@@ -430,7 +626,14 @@ export default function Vendors() {
               Edit Vendor
             </button>
             <button
-              onClick={() => setIsOrdering(true)}
+              onClick={() => setIsImportingReceipt(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#FFFDF5] border border-amber-200 text-amber-800 rounded-lg hover:bg-amber-50 transition-colors text-sm font-semibold shadow-sm"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              Import From Receipt
+            </button>
+            <button
+              onClick={handleOpenOrderModal}
               className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors text-sm font-semibold"
             >
               <ShoppingBag className="w-4 h-4" />
@@ -487,10 +690,12 @@ export default function Vendors() {
               <ShoppingBag className="w-4 h-4 text-zinc-300" />
             </div>
             <p className="text-3xl font-extrabold text-zinc-950 mt-2 font-sans tracking-tight">
-              0
+              {activeOrdersCount}
             </p>
             <p className="text-xs text-zinc-400 font-medium mt-1">
-              no pending orders
+              {activeOrdersCount > 0 
+                ? `${createdCount} created, ${placedCount} pending` 
+                : "No pending orders"}
             </p>
           </div>
         </div>
@@ -680,7 +885,7 @@ export default function Vendors() {
               <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
                 <h3 className="font-bold text-zinc-900 text-sm">Replenishment History</h3>
                 <button
-                  onClick={() => setIsOrdering(true)}
+                  onClick={handleOpenOrderModal}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold rounded-lg transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -695,6 +900,7 @@ export default function Vendors() {
                       <th className="px-6 py-4 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">Material</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">Adjustment</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">Ref / Note</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 bg-white">
@@ -715,22 +921,73 @@ export default function Vendors() {
                               <span className="font-bold text-zinc-900">{log.materialName}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className={cn(
-                                "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold",
-                                log.type === "add" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                              )}>
-                                {log.type === "add" ? "+" : "-"}{log.quantity} {log.unit}
-                              </span>
+                              {log.status === "Created" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 border border-amber-100 bg-amber-50 text-amber-700 rounded-md text-xs font-bold">
+                                  Created: {log.quantity} {log.unit}
+                                </span>
+                              ) : log.status === "Placed" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 border border-sky-100 bg-sky-50 text-sky-700 rounded-md text-xs font-bold">
+                                  Placed: {log.quantity} {log.unit}
+                                </span>
+                              ) : (
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 border rounded-md text-xs font-bold",
+                                  log.type === "add" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-red-700 border-red-100"
+                                )}>
+                                  {log.type === "add" ? "+" : "-"}{log.quantity} {log.unit}
+                                </span>
+                              )}
                             </td>
                             <td className="px-6 py-4 text-xs text-zinc-500 font-medium">
-                              {log.note || "Replenishment"}
+                              <div>{log.note || "Replenishment"}</div>
+                              {log.shippingCost > 0 && (
+                                <div className="text-[10px] text-zinc-400 font-bold mt-0.5">
+                                  + ${parseFloat(log.shippingCost).toFixed(2)} shipping
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-xs font-medium">
+                              {(log.status === "Created" || log.status === "Placed") ? (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (confirm(`Are you sure you want to mark "${log.materialName}" as Received? This will update its stock in inventory.`)) {
+                                      try {
+                                        // 1. Find the material
+                                        const mat = materials.find(m => m.id === log.materialId);
+                                        if (mat) {
+                                          const currentQty = mat.quantityInStock || 0;
+                                          const newQty = currentQty + log.quantity;
+                                          await api.updateMaterial(log.materialId, { 
+                                            quantityInStock: newQty,
+                                            isPending: false // Set to false to place it on material listing!
+                                          });
+                                        }
+                                        // 2. Update stock log status
+                                        await api.updateStockLog(log.id, { status: "Received" });
+                                        // 3. Refresh data
+                                        await fetchData();
+                                      } catch (err) {
+                                        console.error("Failed to mark order as received:", err);
+                                        alert("Failed to update status.");
+                                      }
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-bold rounded-lg transition-colors shadow-sm"
+                                >
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  Mark Received
+                                </button>
+                              ) : (
+                                <span className="text-xs text-zinc-400 font-medium">—</span>
+                              )}
                             </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} className="px-6 py-12 text-center text-sm text-zinc-500">
+                        <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
                           No historical orders or replenishments recorded.
                         </td>
                       </tr>
@@ -742,112 +999,508 @@ export default function Vendors() {
           )}
         </div>
 
-        {/* Record Order Modal Overlay */}
-        {isOrdering && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-zinc-900" />
-                  <h2 className="text-lg font-bold text-zinc-900">Record Material Order</h2>
+        {/* Import From Receipt Modal Overlay */}
+        {isImportingReceipt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="bg-[#FAF9F5] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-[#EAE6DF] text-zinc-900">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-[#F0ECE5] flex items-center justify-between bg-white">
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-900">Import from Receipt</h2>
+                  <p className="text-xs text-zinc-500">Upload a single receipt or invoice.</p>
                 </div>
                 <button 
-                  onClick={() => setIsOrdering(false)} 
-                  className="text-zinc-400 hover:text-zinc-600 transition-colors"
+                  onClick={() => setIsImportingReceipt(false)} 
+                  className="text-zinc-400 hover:text-zinc-600 transition-colors p-1 rounded-full hover:bg-zinc-100"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <form onSubmit={handleRecordOrder} className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-zinc-700">Material to Order</label>
-                  <select
-                    required
-                    value={orderMaterialId}
-                    onChange={(e) => {
-                      const matId = e.target.value;
-                      setOrderMaterialId(matId);
-                      const mat = materials.find(m => m.id === matId);
-                      if (mat) {
-                        setOrderPrice(mat.costPerUnit.toString());
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none text-sm"
-                  >
-                    <option value="">Select a material...</option>
-                    {vendorMaterials.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} (Current stock: {m.quantityInStock} {m.unit})
-                      </option>
-                    ))}
-                  </select>
+
+              <div className="p-6 space-y-4">
+                {/* AI-Powered Alert banner styled like PNG */}
+                <div className="bg-[#FFFDF5] border border-amber-200/60 rounded-xl p-4 text-xs text-amber-900/95 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>AI-Powered · Experimental Feature</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    AI-extracted data may contain errors. You must carefully review and verify all line items, quantities, and prices before saving.{" "}
+                    <span className="underline font-semibold cursor-pointer hover:text-amber-950">Report a bug</span>
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-semibold text-zinc-700">Order Quantity</label>
-                    <input
-                      required
-                      type="number"
-                      step="any"
-                      min="0.01"
-                      value={orderQuantity}
-                      onChange={(e) => setOrderQuantity(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none text-sm"
-                    />
+                {/* Drag and Drop dropzone */}
+                <div 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 min-h-[220px]",
+                    isDraggingOver 
+                      ? "border-amber-400 bg-amber-50/30" 
+                      : "border-zinc-200 hover:border-zinc-300 bg-white"
+                  )}
+                >
+                  {/* Invisible file input */}
+                  <input 
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleFileChange(e.target.files[0]);
+                      }
+                    }}
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                  />
+
+                  {isUploadingReceipt ? (
+                    <div className="space-y-3 flex flex-col items-center py-4">
+                      <div className="relative">
+                        <div className="w-10 h-10 border-4 border-amber-100 border-t-amber-500 rounded-full animate-spin"></div>
+                        <Sparkles className="w-4 h-4 text-amber-500 absolute inset-0 m-auto animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm text-zinc-800">Extracting data with AI...</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">This may take a moment to parse the line items</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 flex flex-col items-center">
+                      <div className="w-12 h-12 bg-zinc-50 border border-zinc-100 rounded-2xl flex items-center justify-center shadow-sm text-zinc-400">
+                        <UploadCloud className="w-6 h-6 text-zinc-500" />
+                      </div>
+                      
+                      <div>
+                        <p className="font-semibold text-zinc-700 text-sm">Drop your receipt or invoice here</p>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          PDF, JPEG, PNG, or HEIC – up to 10MB (1 file)
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="px-4 py-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-semibold rounded-xl transition-all duration-150 shadow-sm"
+                      >
+                        Browse Files
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {receiptError && (
+                  <p className="text-xs font-medium text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-100 animate-in fade-in slide-in-from-top-1">
+                    {receiptError}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Record Order Modal Overlay */}
+        {isOrdering && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="bg-[#FAF9F5] w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-[#EAE6DF] text-zinc-900">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-[#F0ECE5] flex items-center justify-between bg-white">
+                <div className="flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-zinc-850" />
+                  <h2 className="text-lg font-bold text-zinc-900">Record Material Order</h2>
+                </div>
+                <button 
+                  onClick={() => setIsOrdering(false)} 
+                  className="text-zinc-400 hover:text-zinc-600 transition-colors p-1 rounded-full hover:bg-zinc-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content container */}
+              <div className="p-6 space-y-6 max-h-[85vh] overflow-y-auto">
+                
+                {/* PNG Comparable Top Stats Display */}
+                <div className="bg-white border border-[#EAE6DF]/60 rounded-2xl p-6 shadow-sm">
+                  <div className="grid grid-cols-3 text-center divide-x divide-zinc-100">
+                    <div>
+                      <p className="text-3xl font-extrabold text-zinc-900 tracking-tight">
+                        ${(orderItems.reduce((acc, item) => acc + ((parseFloat(item.quantity) || 0) * (parseFloat(item.costPerUnit) || 0)), 0) + (parseFloat(shippingCost) || 0)).toFixed(2)}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mt-1">Total</p>
+                    </div>
+                    <div>
+                      <p className="text-3xl font-extrabold text-zinc-900">
+                        {orderItems.filter(item => item.materialId).length}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mt-1">Items</p>
+                    </div>
+                    <div>
+                      <p className="text-3xl font-extrabold text-zinc-900">
+                        {format(new Date(), "MMM d")}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mt-1">Date Placed</p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-semibold text-zinc-700">Cost per Unit ($)</label>
+
+                  {/* Edit Order Outline Button mimicking PNG */}
+                  <div className="mt-5 flex justify-center">
+                    <div className="inline-flex items-center gap-1.5 px-6 py-2 bg-white border border-zinc-200/80 hover:bg-zinc-50 text-zinc-700 text-xs font-semibold rounded-full shadow-sm transition-colors cursor-default">
+                      <Pencil className="w-3 h-3 text-zinc-400" />
+                      <span>Edit Order</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tab Controls exactly mimicking the PNG */}
+                <div className="bg-[#EFECE5] p-1 rounded-xl flex gap-1">
+                  <button 
+                    type="button"
+                    className="flex-1 text-center py-2 bg-white rounded-lg text-xs font-bold text-zinc-900 shadow-sm border border-zinc-200/10"
+                  >
+                    Details
+                  </button>
+                  <button 
+                    type="button"
+                    disabled
+                    className="flex-1 text-center py-2 text-xs font-bold text-zinc-400 cursor-not-allowed hover:text-zinc-500"
+                  >
+                    Cost Breakdown
+                  </button>
+                  <button 
+                    type="button"
+                    disabled
+                    className="flex-1 text-center py-2 text-xs font-bold text-zinc-400 cursor-not-allowed hover:text-zinc-500"
+                  >
+                    Receive
+                  </button>
+                </div>
+
+                {/* Order Items section comparable to PNG */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-zinc-900">Order Items Preview</h3>
+                  
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {orderItems.map((item, idx) => {
+                      const mat = vendorMaterials.find(m => m.id === item.materialId);
+                      return (
+                        <div key={idx} className="bg-white border border-zinc-200/80 rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            {/* Custom Badges matching the statuses */}
+                            {item.status === "Received" && (
+                              <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 border border-emerald-100 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-bold">
+                                <Check className="w-3.5 h-3.5" />
+                                Received
+                              </span>
+                            )}
+                            {item.status === "Placed" && (
+                              <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 border border-sky-100 bg-sky-50 text-sky-700 rounded-lg text-xs font-bold">
+                                <ShoppingBag className="w-3.5 h-3.5" />
+                                Placed
+                              </span>
+                            )}
+                            {item.status === "Created" && (
+                              <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 border border-amber-100 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold">
+                                <Plus className="w-3.5 h-3.5" />
+                                Created
+                              </span>
+                            )}
+                            {/* Material Information */}
+                            <div className="min-w-0">
+                              <p className="font-bold text-zinc-900 text-sm truncate">
+                                {item.isCustom ? item.customName || "Custom Material (New)" : mat?.name || "No material selected"}
+                              </p>
+                              <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                                {item.quantity || "0"} / {item.quantity || "0"}{" "}
+                                {item.isCustom ? item.customUnit || "units" : mat?.unit || "units"} {item.status === "Received" ? "received" : item.status === "Placed" ? "placed" : "created"} • Lot:{" "}
+                                <span className="font-mono">{item.lotNumber || "N/A"}</span>
+                              </p>
+                            </div>
+                          </div>
+                          {/* Item count marker at far right from PNG */}
+                          <span className="text-sm font-bold text-zinc-300 shrink-0 pr-1">{idx + 1}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Form Fields for real interactive updating */}
+                <form onSubmit={handleRecordOrder} className="bg-white border border-zinc-200/80 rounded-2xl p-5 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                      Order Details Configurator
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderItems([...orderItems, {
+                          materialId: "",
+                          quantity: "1",
+                          costPerUnit: "",
+                          lotNumber: "LOT-" + Math.floor(Math.random() * 900000 + 100000),
+                          status: "Received"
+                        }]);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-zinc-900 hover:underline hover:text-zinc-700"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add Another Material
+                    </button>
+                  </div>
+
+                  {/* Configurator Items list */}
+                  <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1">
+                    {orderItems.map((item, idx) => (
+                      <div key={idx} className="bg-zinc-50/50 border border-zinc-200/60 rounded-2xl p-4 relative space-y-3">
+                        {orderItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = orderItems.filter((_, i) => i !== idx);
+                              setOrderItems(updated);
+                            }}
+                            className="absolute top-3 right-3 text-zinc-400 hover:text-red-500 p-1 rounded-full hover:bg-zinc-100 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        <div className="text-xs font-bold text-zinc-400">
+                          Item #{idx + 1}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Left Column: Material and Custom Details */}
+                          <div className="space-y-3">
+                            {/* Select Material */}
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Material</label>
+                              <select
+                                required
+                                value={item.isCustom ? "__custom__" : item.materialId}
+                                onChange={(e) => {
+                                  const matId = e.target.value;
+                                  const updated = [...orderItems];
+                                  if (matId === "__custom__") {
+                                    updated[idx].materialId = "";
+                                    updated[idx].isCustom = true;
+                                    updated[idx].customName = "";
+                                    updated[idx].customType = "Other";
+                                    updated[idx].customUnit = "units";
+                                    updated[idx].costPerUnit = "";
+                                  } else {
+                                    const mat = vendorMaterials.find(m => m.id === matId);
+                                    updated[idx].materialId = matId;
+                                    updated[idx].isCustom = false;
+                                    if (mat) {
+                                      updated[idx].costPerUnit = mat.costPerUnit.toString();
+                                    }
+                                  }
+                                  setOrderItems(updated);
+                                }}
+                                className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-medium"
+                              >
+                                <option value="">Select a material...</option>
+                                {vendorMaterials.map(m => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name} (Current stock: {m.quantityInStock} {m.unit})
+                                  </option>
+                                ))}
+                                <option value="__custom__">+ Add Custom Material (Not on list)</option>
+                              </select>
+                            </div>
+
+                            {item.isCustom && (
+                              <div className="space-y-3 bg-zinc-100/50 p-3 rounded-xl border border-zinc-200/50">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Custom Material Name</label>
+                                  <input
+                                    required
+                                    type="text"
+                                    placeholder="e.g. Lavender Fragrance Oil"
+                                    value={item.customName || ""}
+                                    onChange={(e) => {
+                                      const updated = [...orderItems];
+                                      updated[idx].customName = e.target.value;
+                                      setOrderItems(updated);
+                                    }}
+                                    className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-medium"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Material Type</label>
+                                    <select
+                                      value={item.customType || "Other"}
+                                      onChange={(e) => {
+                                        const updated = [...orderItems];
+                                        updated[idx].customType = e.target.value;
+                                        setOrderItems(updated);
+                                      }}
+                                      className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-medium"
+                                    >
+                                      {["Wax", "Fragrance", "Wicks", "Vessels", "Packaging", "Other"].map(t => (
+                                        <option key={t} value={t}>{t}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Unit</label>
+                                    <input
+                                      required
+                                      type="text"
+                                      placeholder="e.g. oz, lbs, pcs"
+                                      value={item.customUnit || "units"}
+                                      onChange={(e) => {
+                                        const updated = [...orderItems];
+                                        updated[idx].customUnit = e.target.value;
+                                        setOrderItems(updated);
+                                      }}
+                                      className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-medium"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right Column: Quantity, Cost, Lot & Status */}
+                          <div className="space-y-3">
+                            {/* Quantity & Cost */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Quantity</label>
+                                <input
+                                  required
+                                  type="number"
+                                  step="any"
+                                  min="0.01"
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const updated = [...orderItems];
+                                    updated[idx].quantity = e.target.value;
+                                    setOrderItems(updated);
+                                  }}
+                                  className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-semibold"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Cost per Unit ($)</label>
+                                <input
+                                  required
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  value={item.costPerUnit}
+                                  onChange={(e) => {
+                                    const updated = [...orderItems];
+                                    updated[idx].costPerUnit = e.target.value;
+                                    setOrderItems(updated);
+                                  }}
+                                  className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-semibold"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Lot Number & Status */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Lot / Ref</label>
+                                <input
+                                  type="text"
+                                  value={item.lotNumber}
+                                  onChange={(e) => {
+                                    const updated = [...orderItems];
+                                    updated[idx].lotNumber = e.target.value;
+                                    setOrderItems(updated);
+                                  }}
+                                  placeholder="e.g. LOT-068639"
+                                  className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-medium"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Status</label>
+                                <div className="grid grid-cols-3 bg-[#EFECE5] p-0.5 rounded-lg text-xs font-bold text-zinc-700">
+                                  {(["Created", "Placed", "Received"] as const).map((st) => (
+                                    <button
+                                      key={st}
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = [...orderItems];
+                                        updated[idx].status = st;
+                                        setOrderItems(updated);
+                                      }}
+                                      className={cn(
+                                        "py-1 text-center rounded-md transition-all text-[10px]",
+                                        item.status === st 
+                                          ? st === "Received" ? "bg-emerald-500 text-white shadow-sm"
+                                            : st === "Placed" ? "bg-sky-500 text-white shadow-sm"
+                                            : "bg-amber-500 text-white shadow-sm"
+                                          : "hover:bg-zinc-100"
+                                      )}
+                                    >
+                                      {st}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Shipping Cost field */}
+                  <div className="bg-zinc-50/50 border border-zinc-200/60 rounded-2xl p-4 grid grid-cols-2 gap-4 items-center">
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Shipping Cost ($)</label>
+                      <p className="text-xs text-zinc-400 mt-0.5">Flat rate added to total order price</p>
+                    </div>
                     <input
-                      required
                       type="number"
                       step="any"
                       min="0"
-                      value={orderPrice}
-                      onChange={(e) => setOrderPrice(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none text-sm"
+                      value={shippingCost}
+                      onChange={(e) => setShippingCost(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-950 focus:outline-none text-sm bg-white font-semibold"
                     />
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-zinc-700">Reference / Note</label>
-                  <input
-                    type="text"
-                    value={orderNote}
-                    onChange={(e) => setOrderNote(e.target.value)}
-                    placeholder="e.g. Order #CANDLE-3918"
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:outline-none text-sm"
-                  />
-                </div>
+                  {/* Actions Inside Form */}
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsOrdering(false)}
+                      className="flex-1 px-4 py-2.5 border border-zinc-200 rounded-xl text-zinc-600 font-bold text-sm hover:bg-zinc-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingOrder}
+                      className="flex-1 px-4 py-2.5 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSubmittingOrder ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          Record Order
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
 
-                <div className="pt-4 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsOrdering(false)}
-                    className="flex-1 px-4 py-2.5 border border-zinc-200 rounded-xl text-zinc-600 font-semibold text-sm hover:bg-zinc-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmittingOrder}
-                    className="flex-1 px-4 py-2.5 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isSubmittingOrder ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        Record Order
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
           </div>
         )}

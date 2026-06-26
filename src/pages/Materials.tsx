@@ -41,6 +41,7 @@ interface Material {
   minStockLevel: number;
   unit: string;
   piecesPerBag?: number;
+  isPending?: boolean;
 }
 
 interface Vendor {
@@ -639,7 +640,8 @@ export default function Materials() {
     .filter((m) => {
       const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = !filterType || m.type === filterType;
-      return matchesSearch && matchesType;
+      const isNotPending = !m.isPending;
+      return matchesSearch && matchesType && isNotPending;
     })
     .sort((a, b) => {
       // Primary sort by category order if sorting by type

@@ -544,6 +544,18 @@ export const api = {
     }
   },
 
+  updateStockLog: async (id: string, data: any) => {
+    try {
+      const docRef = doc(db, COLLECTIONS.STOCK_LOGS, id);
+      const payload = {
+        ...sanitizeData(data),
+      };
+      await updateDoc(docRef, payload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.STOCK_LOGS}/${id}`);
+    }
+  },
+
   cleanupDuplicates: async () => {
     if (!auth.currentUser) throw new Error("Not authenticated");
     try {
