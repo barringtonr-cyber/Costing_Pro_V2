@@ -71,8 +71,39 @@ const COLLECTIONS = {
   SALES: 'sales',
   VENDORS: 'vendors',
   STOCK_LOGS: 'stock_logs',
-  USERS: 'users'
+  USERS: 'users',
+  MARKETS: 'markets',
+  MARKET_EVENTS: 'market_events'
 };
+
+export interface Market {
+  id: string;
+  name: string;
+  type: string;
+  address: string;
+  contactName: string;
+  phone: string;
+  status: "Active" | "Inactive" | "Archived";
+  rating: number;
+  userId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MarketEvent {
+  id: string;
+  marketId: string;
+  title: string;
+  date: string; // YYYY-MM-DD (Start Date)
+  endDate?: string; // YYYY-MM-DD (Optional End Date for multi-day events)
+  status: "Confirmed" | "Waitlisted" | "Completed" | "Cancelled" | "Deadline";
+  notes?: string;
+  revenue: number;
+  expenses: number;
+  userId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 const sanitizeData = (data: any): any => {
   if (data === null || data === undefined) return null;
@@ -297,7 +328,9 @@ export const api = {
             if (item.unit === 'g') {
               quantityUsedInBaseUnit = quantityUsedInBaseUnit / 28.3495;
             }
-            const newStock = (material.quantityInStock || 0) - quantityUsedInBaseUnit;
+            const unitSize = getMaterialBaseUnitSize(material);
+            const deductionInPurchaseUnit = quantityUsedInBaseUnit / unitSize;
+            const newStock = (material.quantityInStock || 0) - deductionInPurchaseUnit;
             
             batch.update(materialRef, { 
               quantityInStock: newStock,
@@ -308,7 +341,7 @@ export const api = {
             const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
             batch.set(logRef, {
               materialId: item.materialId,
-              change: -quantityUsedInBaseUnit,
+              change: -deductionInPurchaseUnit,
               type: 'manufacture',
               note: `Manufactured ${quantity} x ${product.name}`,
               userId: auth.currentUser.uid,
@@ -392,8 +425,13 @@ export const api = {
             const materialSnap = await getDoc(materialRef);
             if (materialSnap.exists()) {
               const material = materialSnap.data();
-              const quantityUsed = (item.quantityUsed || 0) * (data.quantitySold || 1);
-              const newStock = (material.quantityInStock || 0) - quantityUsed;
+              let quantityUsedInBaseUnit = (item.quantityUsed || 0) * (data.quantitySold || 1);
+              if (item.unit === 'g') {
+                quantityUsedInBaseUnit = quantityUsedInBaseUnit / 28.3495;
+              }
+              const unitSize = getMaterialBaseUnitSize(material);
+              const deductionInPurchaseUnit = quantityUsedInBaseUnit / unitSize;
+              const newStock = (material.quantityInStock || 0) - deductionInPurchaseUnit;
               
               batch.update(materialRef, { 
                 quantityInStock: newStock,
@@ -404,7 +442,7 @@ export const api = {
               const logRef = doc(collection(db, COLLECTIONS.STOCK_LOGS));
               batch.set(logRef, {
                 materialId: item.materialId,
-                change: -quantityUsed,
+                change: -deductionInPurchaseUnit,
                 type: 'sale',
                 note: `Sale of ${data.quantitySold} x ${data.productName}`,
                 userId: auth.currentUser.uid,
@@ -932,7 +970,15 @@ export const api = {
   resetData: async () => {
     if (!auth.currentUser) throw new Error("Not authenticated");
     try {
-      const collectionsToReset = [COLLECTIONS.MATERIALS, COLLECTIONS.PRODUCTS, COLLECTIONS.SALES, COLLECTIONS.VENDORS, COLLECTIONS.STOCK_LOGS];
+      const collectionsToReset = [
+        COLLECTIONS.MATERIALS, 
+        COLLECTIONS.PRODUCTS, 
+        COLLECTIONS.SALES, 
+        COLLECTIONS.VENDORS, 
+        COLLECTIONS.STOCK_LOGS,
+        COLLECTIONS.MARKETS,
+        COLLECTIONS.MARKET_EVENTS
+      ];
       for (const collName of collectionsToReset) {
         const q = query(collection(db, collName), where("userId", "==", auth.currentUser.uid));
         const snap = await getDocs(q);
@@ -943,6 +989,136 @@ export const api = {
       return { success: true };
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, "reset-all");
+    }
+  },
+
+  // Markets API
+  getMarkets: async (all: boolean = false): Promise<Market[]> => {
+    if (!auth.currentUser && !all) return [];
+    try {
+      const q = all
+        ? query(collection(db, COLLECTIONS.MARKETS), orderBy("name"))
+        : query(
+            collection(db, COLLECTIONS.MARKETS),
+            where("userId", "==", auth.currentUser?.uid),
+            orderBy("name")
+          );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString()
+        } as Market;
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, COLLECTIONS.MARKETS);
+      return [];
+    }
+  },
+
+  addMarket: async (data: Partial<Market>) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const payload = {
+        ...sanitizeData(data),
+        userId: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, COLLECTIONS.MARKETS), payload);
+      return { id: docRef.id };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, COLLECTIONS.MARKETS);
+    }
+  },
+
+  updateMarket: async (id: string, data: Partial<Market>) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const docRef = doc(db, COLLECTIONS.MARKETS, id);
+      const payload = {
+        ...sanitizeData(data),
+        updatedAt: serverTimestamp()
+      };
+      await updateDoc(docRef, payload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.MARKETS}/${id}`);
+    }
+  },
+
+  deleteMarket: async (id: string) => {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.MARKETS, id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.MARKETS}/${id}`);
+    }
+  },
+
+  // Market Events API
+  getMarketEvents: async (all: boolean = false): Promise<MarketEvent[]> => {
+    if (!auth.currentUser && !all) return [];
+    try {
+      const q = all
+        ? query(collection(db, COLLECTIONS.MARKET_EVENTS), orderBy("date", "asc"))
+        : query(
+            collection(db, COLLECTIONS.MARKET_EVENTS),
+            where("userId", "==", auth.currentUser?.uid),
+            orderBy("date", "asc")
+          );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString()
+        } as MarketEvent;
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, COLLECTIONS.MARKET_EVENTS);
+      return [];
+    }
+  },
+
+  addMarketEvent: async (data: Partial<MarketEvent>) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const payload = {
+        ...sanitizeData(data),
+        userId: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, COLLECTIONS.MARKET_EVENTS), payload);
+      return { id: docRef.id };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, COLLECTIONS.MARKET_EVENTS);
+    }
+  },
+
+  updateMarketEvent: async (id: string, data: Partial<MarketEvent>) => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    try {
+      const docRef = doc(db, COLLECTIONS.MARKET_EVENTS, id);
+      const payload = {
+        ...sanitizeData(data),
+        updatedAt: serverTimestamp()
+      };
+      await updateDoc(docRef, payload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.MARKET_EVENTS}/${id}`);
+    }
+  },
+
+  deleteMarketEvent: async (id: string) => {
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.MARKET_EVENTS, id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.MARKET_EVENTS}/${id}`);
     }
   }
 };

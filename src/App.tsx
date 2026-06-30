@@ -13,7 +13,8 @@ import {
   Store,
   Calculator as CalculatorIcon,
   BarChart3,
-  Users as UsersIcon
+  Users as UsersIcon,
+  MapPin
 } from "lucide-react";
 import { cn } from "./lib/utils";
 import { api } from "./api";
@@ -31,6 +32,8 @@ import Calculator from "./pages/Calculator";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import UsersPage from "./pages/Users";
+import Markets from "./pages/Markets";
+import MarketsCalendar from "./pages/MarketsCalendar";
 
 import { AdminProvider, useAdmin } from "./context/AdminContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -105,6 +108,8 @@ function AppContent() {
                 <Route path="/vendors" element={<Vendors />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/sales" element={<Sales />} />
+                <Route path="/markets" element={<Markets />} />
+                <Route path="/markets/calendar" element={<MarketsCalendar />} />
                 <Route path="/calculator" element={<Calculator />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
@@ -162,6 +167,15 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
     { name: "Vendors", path: "/vendors", icon: Store },
     { name: "Products", path: "/products", icon: ChefHat },
     { name: "Sales", path: "/sales", icon: ShoppingCart },
+    { 
+      name: "Markets", 
+      path: "/markets", 
+      icon: MapPin,
+      subItems: [
+        { name: "All Markets", path: "/markets" },
+        { name: "Calendar", path: "/markets/calendar" }
+      ]
+    },
     { name: "Calculator", path: "/calculator", icon: CalculatorIcon },
     { name: "Reports", path: "/reports", icon: BarChart3 },
     { name: "Settings", path: "/settings", icon: Menu },

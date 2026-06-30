@@ -48,6 +48,14 @@ service cloud.firestore {
       return u.get('email', 'x') is string;
     }
 
+    function validateMarket(m) {
+      return m.get('name', 'x') is string && m.get('name', 'x').size() <= 200;
+    }
+
+    function validateMarketEvent(e) {
+      return e.get('marketId', 'x') is string && e.get('title', 'x') is string;
+    }
+
     // Rules
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
@@ -117,6 +125,30 @@ service cloud.firestore {
       allow create: if isEmailVerified() && isValidId(logId) && 
                     request.resource.data.userId == request.auth.uid;
       allow update, delete: if false; 
+    }
+
+    match /markets/{marketId} {
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(marketId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateMarket(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    validateMarket(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /market_events/{eventId} {
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(eventId) && 
+                    request.resource.data.userId == request.auth.uid &&
+                    validateMarketEvent(request.resource.data);
+      allow update: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    validateMarketEvent(request.resource.data) &&
+                    (isAdmin() || (request.resource.data.get('userId', resource.data.userId) == resource.data.userId));
+      allow delete: if isEmailVerified() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }

@@ -819,7 +819,7 @@ export default function Materials() {
       {/* Add/Edit Form Overlay */}
       {isAdding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
               <h2 className="text-lg font-bold text-zinc-900">
                 {editingId ? "Edit Material" : "Add New Material"}

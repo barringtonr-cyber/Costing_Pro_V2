@@ -96,6 +96,41 @@
         "onboardingComplete": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "Market": {
+      "title": "Market",
+      "description": "Venue for events",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "address": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Inactive", "Archived"] },
+        "rating": { "type": "number" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MarketEvent": {
+      "title": "Market Event",
+      "description": "Specific scheduled market event",
+      "type": "object",
+      "properties": {
+        "marketId": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "endDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Confirmed", "Waitlisted", "Completed", "Cancelled", "Deadline"] },
+        "notes": { "type": "string" },
+        "revenue": { "type": "number" },
+        "expenses": { "type": "number" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -104,6 +139,8 @@
     "/sales/{saleId}": { "schema": "Sale", "description": "Sales collection" },
     "/vendors/{vendorId}": { "schema": "Vendor", "description": "Vendors collection" },
     "/stock_logs/{logId}": { "schema": "StockLog", "description": "Stock logs collection" },
-    "/users/{userId}": { "schema": "UserProfile", "description": "Users collection" }
+    "/users/{userId}": { "schema": "UserProfile", "description": "Users collection" },
+    "/markets/{marketId}": { "schema": "Market", "description": "Markets collection" },
+    "/market_events/{eventId}": { "schema": "MarketEvent", "description": "Market events collection" }
   }
 }

@@ -15,7 +15,7 @@ export default function RoomSprayCalculator() {
   const [bottleSize, setBottleSize] = useState<number>(4);
   const [unit, setUnit] = useState<"ounce" | "gram">("ounce");
   const [fragranceLoad, setFragranceLoad] = useState<number>(5);
-  const [formula, setFormula] = useState<"ecoBase" | "dulceria">("ecoBase");
+  const [formula, setFormula] = useState<"ecoBase" | "dulceria" | "ecoBaseWaterBase">("ecoBase");
 
   const [results, setResults] = useState({
     base: 0,
@@ -40,7 +40,7 @@ export default function RoomSprayCalculator() {
         total: parseFloat(totalWeight.toFixed(2))
       });
     } else {
-      // Dulceria base (no additional additives)
+      // Dulceria or EcoBase (Water-Base)
       setResults({
         base: parseFloat(remainingWeight.toFixed(2)),
         water: 0,
@@ -67,24 +67,35 @@ export default function RoomSprayCalculator() {
       <div className="p-6 space-y-6 flex-1 flex flex-col">
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Base Formula</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => setFormula("ecoBase")}
               className={cn(
-                "px-3 py-2 text-xs font-bold rounded-lg border transition-all",
+                "px-2 py-2 text-xs font-bold rounded-lg border transition-all text-center",
                 formula === "ecoBase"
-                  ? "bg-zinc-900 text-white border-zinc-900"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
                   : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
               )}
             >
               EcoBase (Water Diluted)
             </button>
             <button
+              onClick={() => setFormula("ecoBaseWaterBase")}
+              className={cn(
+                "px-2 py-2 text-xs font-bold rounded-lg border transition-all text-center",
+                formula === "ecoBaseWaterBase"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              EcoBase (Water-Base)
+            </button>
+            <button
               onClick={() => setFormula("dulceria")}
               className={cn(
-                "px-3 py-2 text-xs font-bold rounded-lg border transition-all",
+                "px-2 py-2 text-xs font-bold rounded-lg border transition-all text-center",
                 formula === "dulceria"
-                  ? "bg-zinc-900 text-white border-zinc-900"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
                   : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
               )}
             >
@@ -130,6 +141,11 @@ export default function RoomSprayCalculator() {
               onChange={(e) => setFragranceLoad(parseFloat(e.target.value) || 0)}
               className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:ring-2 focus:ring-zinc-900 focus:outline-none"
             />
+            {formula === "ecoBaseWaterBase" && fragranceLoad > 15 && (
+              <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                ⚠️ Suggested max load for EcoBase is 15%.
+              </p>
+            )}
           </div>
         </div>
 
@@ -157,7 +173,7 @@ export default function RoomSprayCalculator() {
           <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-100 flex flex-col items-center justify-center text-center">
             <Droplets className="w-4 h-4 text-indigo-400 mb-2" />
             <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">
-              {formula === "ecoBase" ? "Base (1 part)" : "Room Spray Base"}
+              {formula === "ecoBase" ? "Base (1 part)" : formula === "ecoBaseWaterBase" ? "EcoBase (Water-Base)" : "Room Spray Base"}
             </p>
             <p className="text-lg font-black text-zinc-900 leading-none">
               {unit === "ounce" ? `${results.base} oz` : `${results.base} g`}
@@ -201,10 +217,10 @@ export default function RoomSprayCalculator() {
         </div>
 
         <div className="mt-4 pt-4 border-t border-zinc-100">
-          <p className="text-sm text-zinc-500 text-center italic font-medium">
-            {formula === "ecoBase" 
-              ? "* This calculator is based on the CandleScience EcoBase Room and Linen Spray formula (1 part base to 3 parts water)."
-              : "* This calculator is optimized for Dulceria Room Spray base which requires only base and fragrance load."}
+          <p className="text-sm text-zinc-500 text-center italic font-medium text-balance">
+            {formula === "ecoBase" && "* This calculator is based on the CandleScience EcoBase Room and Linen Spray formula (1 part base to 3 parts water)."}
+            {formula === "ecoBaseWaterBase" && "* Note: This is based on the CandleScience EcoBase Fine Fragrance Base. Suggested max load = 15%."}
+            {formula === "dulceria" && "* This calculator is optimized for Dulceria Room Spray base which requires only base and fragrance load."}
           </p>
         </div>
       </div>

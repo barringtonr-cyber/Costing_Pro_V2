@@ -15,7 +15,8 @@ import {
   Sparkles,
   ShoppingBag,
   Printer,
-  Package
+  Package,
+  Copy
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import AIRecipeGenerator from "../components/AIRecipeGenerator";
@@ -211,6 +212,23 @@ export default function Products() {
     setIsAdding(true);
   };
 
+  const handleCopy = (product: Product) => {
+    setName(`${product.name} (Copy)`);
+    setType(product.type || "Candle");
+    setDescription(product.description || "");
+    setSelectedMaterials(product.materials.map(m => ({ 
+      materialId: m.materialId, 
+      quantityUsed: m.quantityUsed,
+      unit: m.unit,
+      percentage: m.percentage
+    })));
+    setSellingPrice(product.suggestedPrice.toString());
+    setQuantityInStock((product.quantityInStock || 0).toString());
+    setMinStockLevel((product.minStockLevel || 5).toString());
+    setEditingId(null);
+    setIsAdding(true);
+  };
+
   const handleDelete = async (id: string) => {
     try {
       await api.deleteProduct(id);
@@ -376,7 +394,7 @@ export default function Products() {
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-1 w-33">
+          <div className="flex items-center gap-1 w-44">
             <input
               type="number"
               step="0.01"
@@ -530,7 +548,7 @@ export default function Products() {
 
       {isAdding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
               <h2 className="text-lg font-bold text-zinc-900">
                 {editingId ? "Edit Product" : "New Product Recipe"}
@@ -1161,7 +1179,14 @@ export default function Products() {
                   >
                     <Package className="w-4 h-4" />
                   </button>
-                  <button onClick={() => handleEdit(product)} className="p-2 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-50">
+                  <button 
+                    onClick={() => handleCopy(product)} 
+                    className="p-2 text-zinc-400 hover:text-amber-600 rounded-lg hover:bg-amber-50 animate-in zoom-in duration-200"
+                    title="Copy Product Recipe"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleEdit(product)} className="p-2 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-50" title="Edit Recipe">
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button onClick={() => setDeletingId(product.id)} className="p-2 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50">
