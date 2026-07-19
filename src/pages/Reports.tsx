@@ -11,7 +11,12 @@ import {
   Download,
   Calendar,
   Printer,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  ChefHat,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -59,6 +64,22 @@ export default function Reports() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { showAllData } = useAdmin();
+
+  const [activeTab, setActiveTab] = useState<"analytics" | "recipes">("analytics");
+  const [products, setProducts] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [recipeSearch, setRecipeSearch] = useState("");
+  const [recipeSortBy, setRecipeSortBy] = useState<"name" | "type">("name");
+  const [recipeSortOrder, setRecipeSortOrder] = useState<"asc" | "desc">("asc");
+
+  const toggleRecipeSort = (field: "name" | "type") => {
+    if (recipeSortBy === field) {
+      setRecipeSortOrder(recipeSortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setRecipeSortBy(field);
+      setRecipeSortOrder("asc");
+    }
+  };
 
   // Calendar filtering state
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -135,12 +156,16 @@ export default function Reports() {
         setLoading(true);
         const effectiveAll = showAllData && isAdmin;
         const filterDates = getFilterDates();
-        const [reportResult, profileResult] = await Promise.all([
+        const [reportResult, profileResult, productsResult, materialsResult] = await Promise.all([
           api.getReports(effectiveAll, filterDates.start, filterDates.end),
-          api.getProfile()
+          api.getProfile(),
+          api.getProducts(effectiveAll),
+          api.getMaterials(effectiveAll)
         ]);
         setData(reportResult as any);
         setProfile(profileResult);
+        setProducts(productsResult || []);
+        setMaterials(materialsResult || []);
       } catch (error) {
         console.error("Error fetching report data:", error);
       } finally {
@@ -278,9 +303,168 @@ export default function Reports() {
     doc.save(`business-report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
   };
 
+  const getFormattedMaterials = (product: any) => {
+    if (!product.materials) return "None";
+    return product.materials.map((pm: any) => {
+      const material = materials.find(m => m.id === pm.materialId);
+      if (!material && pm.materialId === 'distilled-water') {
+        return `Distilled Water (${pm.quantityUsed} oz)`;
+      }
+      if (!material) return `${pm.name || 'Unknown'} (${pm.quantityUsed} ${pm.unit || 'oz'})`;
+      const unit = pm.unit || (material.unit === "Piece Bag" ? "pcs" : "oz");
+      return `${material.name} (${pm.quantityUsed} ${unit})`;
+    }).join(", ");
+  };
+
+  const getFormattedMaterialsList = (product: any) => {
+    if (!product.materials) return "None";
+    return product.materials.map((pm: any) => {
+      const material = materials.find(m => m.id === pm.materialId);
+      if (!material && pm.materialId === 'distilled-water') {
+        return `• Distilled Water (${pm.quantityUsed} oz)`;
+      }
+      if (!material) return `• ${pm.name || 'Unknown'} (${pm.quantityUsed} ${pm.unit || 'oz'})`;
+      const unit = pm.unit || (material.unit === "Piece Bag" ? "pcs" : "oz");
+      return `• ${material.name} (${pm.quantityUsed} ${unit})`;
+    }).join("\n");
+  };
+
+  const exportRecipeLogPDF = async () => {
+    if (!products || products.length === 0) return;
+    
+    const doc = new jsPDF();
+    const companyName = profile?.companyName ? profile.companyName : "Costing Pro";
+    const logoUrl = profile?.logoUrl ? profile.logoUrl : null;
+
+    let currentY = 22;
+    let textX = 14;
+
+    if (logoUrl) {
+      try {
+        const proxiedUrl = `https://images.weserv.nl/?url=${encodeURIComponent(logoUrl)}&output=png`;
+        const img = await loadImage(proxiedUrl);
+        const scale = Math.min(30 / img.width, 30 / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/png');
+            doc.addImage(dataUrl, 'PNG', 14, 10, w, h, undefined, 'FAST');
+            textX = 50;
+          }
+        } catch (canvasError) {
+          doc.addImage(img, 'PNG', 14, 10, w, h, undefined, 'FAST');
+          textX = 50;
+        }
+      } catch (e) {
+        console.error("Error loading logo for PDF:", e);
+        textX = 14;
+        currentY = 22;
+      }
+    }
+
+    doc.setFontSize(20);
+    doc.setTextColor(24, 24, 27); // zinc-900
+    doc.text(companyName, textX, currentY);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(113, 113, 122); // zinc-500
+    doc.text("Product Recipe Log", textX, currentY + 8);
+    
+    doc.setFontSize(10);
+    doc.text(`Generated on ${format(new Date(), "MMMM d, yyyy")}`, textX, currentY + 15);
+
+    const tableStartY = Math.max(currentY + 30, 50);
+
+    autoTable(doc, {
+      startY: tableStartY,
+      head: [['Product Name', 'Type', 'Description', 'Materials Used']],
+      body: filteredRecipes.map(product => [
+        product.name,
+        product.type || "Candle",
+        product.description || "No description provided.",
+        getFormattedMaterialsList(product)
+      ]),
+      headStyles: { fillColor: [24, 24, 27] }, // zinc-900
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 55 }
+      },
+      styles: {
+        fontSize: 10,
+        valign: 'top',
+        overflow: 'linebreak'
+      },
+      margin: { top: 20 }
+    });
+
+    doc.save(`product-recipe-log-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+  };
+
+  const filteredRecipes = products
+    .filter(product => {
+      const q = recipeSearch.toLowerCase();
+      const nameMatch = product.name?.toLowerCase().includes(q);
+      const descMatch = product.description?.toLowerCase().includes(q);
+      return nameMatch || descMatch;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      if (recipeSortBy === "name") {
+        comparison = (a.name || "").localeCompare(b.name || "");
+      } else {
+        comparison = (a.type || "Candle").localeCompare(b.type || "Candle");
+      }
+      
+      // Secondary sort alphabetically by name if values are identical
+      if (comparison === 0) {
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      
+      return recipeSortOrder === "asc" ? comparison : -comparison;
+    });
+
   return (
-    <div className="space-y-8">
-      {/* Branding Preview for Business Users */}
+    <div className="space-y-8 print:space-y-4">
+      {/* Tab Selector */}
+      <div className="flex border-b border-zinc-200 print:hidden mb-6">
+        <button
+          onClick={() => setActiveTab("analytics")}
+          className={cn(
+            "px-6 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            activeTab === "analytics"
+              ? "border-zinc-950 text-zinc-950"
+              : "border-transparent text-zinc-500 hover:text-zinc-900"
+          )}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Business Analytics
+        </button>
+        <button
+          onClick={() => setActiveTab("recipes")}
+          className={cn(
+            "px-6 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            activeTab === "recipes"
+              ? "border-zinc-950 text-zinc-950"
+              : "border-transparent text-zinc-500 hover:text-zinc-900"
+          )}
+        >
+          <ChefHat className="w-4 h-4" />
+          Product Recipe Log
+        </button>
+      </div>
+
+      {activeTab === "analytics" ? (
+        <div className="space-y-8">
+          {/* Branding Preview for Business Users */}
       {profile && (profile.companyName || profile.logoUrl) && (
         <div className="bg-zinc-900 text-white rounded-2xl p-6 shadow-xl overflow-hidden relative">
           <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -606,6 +790,165 @@ export default function Reports() {
           </table>
         </div>
       </div>
+    </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Printable Header for standard browser print (normally hidden, shown on print) */}
+          <div className="hidden print:block mb-8 border-b-2 border-zinc-900 pb-4">
+            <h1 className="text-3xl font-extrabold text-zinc-900 tracking-tight uppercase">
+              {profile?.companyName || "Costing Pro"}
+            </h1>
+            <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest mt-1">
+              Master Product Recipe Log
+            </p>
+            <p className="text-xs text-zinc-400 mt-1">
+              Generated on {format(new Date(), "MMMM d, yyyy")}
+            </p>
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+            <div>
+              <h1 className="text-2xl font-bold text-zinc-900">Product Recipe Log</h1>
+              <p className="text-zinc-500 text-sm">Printers and exports for your product formulations and raw material specs.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-100 text-zinc-900 border border-zinc-200 rounded-lg hover:bg-zinc-200 transition-colors text-sm font-medium"
+              >
+                <Printer className="w-4 h-4" />
+                Print Page
+              </button>
+              <button 
+                onClick={exportRecipeLogPDF}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors text-sm font-medium"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF
+              </button>
+            </div>
+          </div>
+
+          {/* Search/Filter bar */}
+          <div className="relative print:hidden">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search recipes by product name or description..."
+              value={recipeSearch}
+              onChange={(e) => setRecipeSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+            />
+          </div>
+
+          <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden print:border-none print:shadow-none">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between print:hidden">
+              <h3 className="font-bold text-zinc-900">Formulation Recipes</h3>
+              <span className="text-xs font-semibold text-zinc-500 bg-zinc-50 px-2.5 py-1 rounded-full">
+                {filteredRecipes.length} {filteredRecipes.length === 1 ? "Product" : "Products"} sorted by {recipeSortBy === "name" ? "Name" : "Type"} ({recipeSortOrder === "asc" ? "A-Z" : "Z-A"})
+              </span>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse print:text-xs">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 print:bg-zinc-100 print:border-b-2 print:border-zinc-300">
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider print:text-zinc-900 print:font-bold">
+                      <button
+                        onClick={() => toggleRecipeSort("name")}
+                        className="flex items-center gap-1.5 hover:text-zinc-900 transition-colors focus:outline-none font-bold text-left uppercase tracking-wider print:pointer-events-none"
+                      >
+                        <span>Product Name</span>
+                        <span className="print:hidden">
+                          {recipeSortBy === "name" ? (
+                            recipeSortOrder === "asc" ? <ArrowUp className="w-3 h-3 text-zinc-900" /> : <ArrowDown className="w-3 h-3 text-zinc-900" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-zinc-300 hover:text-zinc-400" />
+                          )}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider print:text-zinc-900 print:font-bold">
+                      <button
+                        onClick={() => toggleRecipeSort("type")}
+                        className="flex items-center gap-1.5 hover:text-zinc-900 transition-colors focus:outline-none font-bold text-left uppercase tracking-wider print:pointer-events-none"
+                      >
+                        <span>Type</span>
+                        <span className="print:hidden">
+                          {recipeSortBy === "type" ? (
+                            recipeSortOrder === "asc" ? <ArrowUp className="w-3 h-3 text-zinc-900" /> : <ArrowDown className="w-3 h-3 text-zinc-900" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-zinc-300 hover:text-zinc-400" />
+                          )}
+                        </span>
+                      </button>
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider print:text-zinc-900 print:font-bold">Description</th>
+                    <th className="px-6 py-3 text-xs font-bold text-zinc-500 uppercase tracking-wider print:text-zinc-900 print:font-bold">Materials Used</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 print:divide-zinc-200">
+                  {filteredRecipes.map((product) => (
+                    <tr key={product.id} className="hover:bg-zinc-50/50 transition-colors print:hover:bg-transparent">
+                      <td className="px-6 py-4 text-sm font-semibold text-zinc-900 align-top max-w-[150px] break-words print:text-xs">
+                        {product.name}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-500 align-top print:text-xs print:text-zinc-800">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 print:p-0 print:bg-transparent print:text-xs print:font-semibold">
+                          {product.type || "Candle"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-500 align-top max-w-[250px] break-words italic print:text-xs print:text-zinc-800">
+                        {product.description || <span className="text-zinc-300 not-italic">No description provided.</span>}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-600 align-top print:text-xs">
+                        <ul className="space-y-1">
+                          {product.materials && product.materials.length > 0 ? (
+                            product.materials.map((pm: any, idx: number) => {
+                              const material = materials.find(m => m.id === pm.materialId);
+                              let matName = pm.name || "Unknown";
+                              let matUnit = pm.unit || "oz";
+                              if (material) {
+                                matName = material.name;
+                                matUnit = pm.unit || (material.unit === "Piece Bag" ? "pcs" : "oz");
+                              } else if (pm.materialId === 'distilled-water') {
+                                matName = "Distilled Water";
+                                matUnit = "oz";
+                              }
+                              return (
+                                <li key={idx} className="flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 print:bg-zinc-500" />
+                                  <span>{matName} <span className="text-zinc-400 font-medium font-mono text-[11px] print:text-zinc-600">({pm.quantityUsed} {matUnit})</span></span>
+                                </li>
+                              );
+                            })
+                          ) : (
+                            <span className="text-zinc-300">No materials assigned.</span>
+                          )}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRecipes.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center text-sm text-zinc-500">
+                        {products.length === 0 ? (
+                          <div className="space-y-1">
+                            <p className="font-bold">No products created yet.</p>
+                            <p className="text-zinc-400 text-xs">Create formulation recipes on the Products page first.</p>
+                          </div>
+                        ) : (
+                          "No formulation recipes match your search."
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -186,9 +186,9 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-zinc-50 flex flex-col md:flex-row print:bg-white">
       {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-zinc-200 p-4 flex items-center justify-between sticky top-0 z-50">
+      <div className="md:hidden bg-white border-b border-zinc-200 p-4 flex items-center justify-between sticky top-0 z-50 print:hidden">
         <div className="flex items-center gap-2">
           {profile?.logoUrl ? (
             <img src={profile.logoUrl} alt="Logo" className="w-8 h-8 object-contain" referrerPolicy="no-referrer" />
@@ -207,7 +207,7 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-0 z-40 bg-white border-r border-zinc-200 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:w-64 flex flex-col",
+          "fixed inset-0 z-40 bg-white border-r border-zinc-200 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:w-64 flex flex-col print:hidden",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -310,8 +310,8 @@ function Layout({ children, user, onLogout }: { children: React.ReactNode; user:
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 md:p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto">{children}</div>
+      <main className="flex-1 p-4 md:p-8 overflow-auto print:p-0 print:overflow-visible">
+        <div className="max-w-6xl mx-auto print:max-w-full print:w-full">{children}</div>
       </main>
     </div>
   );
