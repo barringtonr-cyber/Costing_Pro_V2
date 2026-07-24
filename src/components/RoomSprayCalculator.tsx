@@ -15,7 +15,7 @@ export default function RoomSprayCalculator() {
   const [bottleSize, setBottleSize] = useState<number>(4);
   const [unit, setUnit] = useState<"ounce" | "gram">("ounce");
   const [fragranceLoad, setFragranceLoad] = useState<number>(5);
-  const [formula, setFormula] = useState<"ecoBase" | "dulceria" | "ecoBaseWaterBase">("ecoBase");
+  const [formula, setFormula] = useState<"ecoBase" | "dulceria" | "ecoBaseWaterBase" | "naturalState">("ecoBase");
 
   const [results, setResults] = useState({
     base: 0,
@@ -67,7 +67,7 @@ export default function RoomSprayCalculator() {
       <div className="p-6 space-y-6 flex-1 flex flex-col">
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Base Formula</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setFormula("ecoBase")}
               className={cn(
@@ -89,6 +89,17 @@ export default function RoomSprayCalculator() {
               )}
             >
               EcoBase (Water-Base)
+            </button>
+            <button
+              onClick={() => setFormula("naturalState")}
+              className={cn(
+                "px-2 py-2 text-xs font-bold rounded-lg border transition-all text-center",
+                formula === "naturalState"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              Natural State (Plant Based)
             </button>
             <button
               onClick={() => setFormula("dulceria")}
@@ -146,6 +157,11 @@ export default function RoomSprayCalculator() {
                 ⚠️ Suggested max load for EcoBase is 15%.
               </p>
             )}
+            {formula === "naturalState" && fragranceLoad > 9 && (
+              <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                ⚠️ Suggested max load for Natural State is 9%.
+              </p>
+            )}
           </div>
         </div>
 
@@ -173,7 +189,7 @@ export default function RoomSprayCalculator() {
           <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-100 flex flex-col items-center justify-center text-center">
             <Droplets className="w-4 h-4 text-indigo-400 mb-2" />
             <p className="text-[10px] font-bold text-zinc-500 uppercase mb-1">
-              {formula === "ecoBase" ? "Base (1 part)" : formula === "ecoBaseWaterBase" ? "EcoBase (Water-Base)" : "Room Spray Base"}
+              {formula === "ecoBase" ? "Base (1 part)" : formula === "ecoBaseWaterBase" ? "EcoBase (Water-Base)" : formula === "naturalState" ? "Natural State Base" : "Room Spray Base"}
             </p>
             <p className="text-lg font-black text-zinc-900 leading-none">
               {unit === "ounce" ? `${results.base} oz` : `${results.base} g`}
@@ -220,6 +236,7 @@ export default function RoomSprayCalculator() {
           <p className="text-sm text-zinc-500 text-center italic font-medium text-balance">
             {formula === "ecoBase" && "* This calculator is based on the CandleScience EcoBase Room and Linen Spray formula (1 part base to 3 parts water)."}
             {formula === "ecoBaseWaterBase" && "* Note: This is based on the CandleScience EcoBase Fine Fragrance Base. Suggested max load = 15%."}
+            {formula === "naturalState" && "*This calculator is based on Natural State Fragrance unscented Base. Add up to 9% Fragrance load."}
             {formula === "dulceria" && "* This calculator is optimized for Dulceria Room Spray base which requires only base and fragrance load."}
           </p>
         </div>
