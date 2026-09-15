@@ -20,7 +20,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSuperAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+      return isSuperAdmin() || 
+             (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))) ||
+             (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "admin");
     }
 
     function isValidId(id) {
@@ -59,11 +62,12 @@ service cloud.firestore {
     // Rules
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId && validateUser(request.resource.data);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && validateUser(request.resource.data);
       allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
                     validateUser(request.resource.data) &&
                     (isAdmin() || (request.resource.data.get('role', resource.data.role) == resource.data.role));
+      allow delete: if isSignedIn() && isAdmin();
     }
 
     match /admins/{adminId} {

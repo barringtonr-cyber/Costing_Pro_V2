@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { 
   signInWithPopup, 
+  signInWithEmailAndPassword
 } from "firebase/auth";
 import { auth, googleProvider } from "../firebase";
 import { 
@@ -8,14 +9,22 @@ import {
   ChevronRight, 
   BarChart3, 
   TrendingUp, 
-  ShieldCheck,
-  Package,
-  Layers,
-  ArrowRight
+  ShieldCheck, 
+  Package, 
+  Layers, 
+  ArrowRight,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { motion } from "motion/react";
 
 export default function Login() {
+  const [authMethod, setAuthMethod] = useState<"google" | "email">("google");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +35,32 @@ export default function Login() {
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
       console.error("Login error:", err);
-      setError("Failed to sign in. Please try again.");
+      setError("Failed to sign in with Google. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError("Please enter both email and password.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch (err: any) {
+      console.error("Email login error:", err);
+      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+        setError("Invalid email address or password.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many failed attempts. Please try again later.");
+      } else {
+        setError(err.message || "Failed to sign in. Please verify your credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -111,46 +145,129 @@ export default function Login() {
               </p>
             </div>
 
-            <div className="space-y-4">
+            {/* Sign-in Method Tabs */}
+            <div className="grid grid-cols-2 p-1 bg-zinc-100 rounded-xl">
               <button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-sm font-semibold text-zinc-900 hover:bg-zinc-50 hover:shadow-sm transition-all relative overflow-hidden group disabled:opacity-50"
+                type="button"
+                onClick={() => { setAuthMethod("google"); setError(null); }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                  authMethod === "google"
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-900"
+                }`}
               >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                      <path
-                        fill="currentColor"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="currentColor"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-                        />
-                      <path
-                        fill="currentColor"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                      />
-                    </svg>
-                    Continue with Google
-                  </>
-                )}
+                Google
               </button>
-
-              {error && (
-                <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-medium border border-red-100 flex items-center justify-center gap-2">
-                  <span className="w-1 h-1 bg-red-600 rounded-full"></span>
-                  {error}
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => { setAuthMethod("email"); setError(null); }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                  authMethod === "email"
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-900"
+                }`}
+              >
+                Email & Password
+              </button>
             </div>
+
+            {authMethod === "google" ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-white border border-zinc-200 rounded-2xl text-sm font-semibold text-zinc-900 hover:bg-zinc-50 hover:shadow-sm transition-all relative overflow-hidden group disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" viewBox="0 0 24 24">
+                        <path
+                          fill="currentColor"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                        />
+                        <path
+                          fill="currentColor"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        />
+                      </svg>
+                      Continue with Google
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleEmailLogin} className="space-y-3 text-left">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-700">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      className="w-full pl-9 pr-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-zinc-700">Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-9 pr-10 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full mt-2 py-3 bg-zinc-900 text-white rounded-xl text-sm font-semibold hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {error && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-medium border border-red-100 flex items-center justify-center gap-2">
+                <span className="w-1.5 h-1.5 bg-red-600 rounded-full flex-shrink-0"></span>
+                <span>{error}</span>
+              </div>
+            )}
 
             <p className="text-[10px] text-zinc-400 leading-relaxed max-w-[240px] mx-auto uppercase font-bold tracking-widest">
               By continuing, you agree to our Terms of Service and Privacy Policy.

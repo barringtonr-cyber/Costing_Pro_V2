@@ -93,6 +93,8 @@
         "companyName": { "type": "string" },
         "logoUrl": { "type": "string" },
         "role": { "type": "string" },
+        "isPro": { "type": "boolean" },
+        "createdBy": { "type": "string" },
         "onboardingComplete": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       }

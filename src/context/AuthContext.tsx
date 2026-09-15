@@ -1,7 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  deleteDoc, 
+  serverTimestamp 
+} from "firebase/firestore";
 
 interface AuthUser extends User {
   role?: string;
@@ -26,20 +36,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // Check for admin/pro status in Firestore
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
           let userData = userDoc.exists() ? userDoc.data() : null;
 
-          // Provision user doc if it doesn't exist
+          // Check if an admin pre-provisioned this user by email
+          if (!userData && firebaseUser.email) {
+            try {
+              const emailQ = query(
+                collection(db, "users"),
+                where("email", "==", firebaseUser.email.toLowerCase())
+              );
+              const emailSnap = await getDocs(emailQ);
+              if (!emailSnap.empty) {
+                const preDoc = emailSnap.docs[0];
+                const preData = preDoc.data();
+                userData = {
+                  ...preData,
+                  email: firebaseUser.email.toLowerCase(),
+                  displayName: preData.displayName || firebaseUser.displayName || "",
+                  updatedAt: serverTimestamp(),
+                  preAuthorized: false
+                };
+                await setDoc(userDocRef, userData, { merge: true });
+                if (preDoc.id !== firebaseUser.uid) {
+                  await deleteDoc(preDoc.ref).catch(() => {});
+                }
+              }
+            } catch (queryErr) {
+              console.warn("Could not query pre-authorized user doc:", queryErr);
+            }
+          }
+
+          // Provision default user doc if still doesn't exist
           if (!userData) {
             userData = {
-              email: firebaseUser.email,
+              email: firebaseUser.email?.toLowerCase(),
               displayName: firebaseUser.displayName,
               role: firebaseUser.email === "barringtonr@gmail.com" ? "admin" : "user",
               createdAt: serverTimestamp(),
               isPro: firebaseUser.email === "barringtonr@gmail.com" ? true : false
             };
-            await setDoc(doc(db, "users", firebaseUser.uid), userData);
+            await setDoc(userDocRef, userData);
           }
 
           const authUser = {
